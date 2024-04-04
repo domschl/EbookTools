@@ -52,7 +52,7 @@ class CalibreTools:
         s = s.strip()
         return s
 
-    def enum_calibre(self, max_entries=None):
+    def load_calibre_library_metadata(self, max_entries=None):
         self.lib_entries = []
         for root, dirs, files in os.walk(self.calibre_path):
             if ".caltrash" in root or ".calnotes" in root:
@@ -231,12 +231,13 @@ class CalibreTools:
                             self.log.error(f"  {cmp}")
                             exit(-1)
                     self.lib_entries.append(entry)
+                    self.log.debug(f"Added entry: {entry['title']}")
                     if max_entries is not None and len(self.lib_entries) >= max_entries:
                         self.log.warning(f"Reached max entries {max_entries}")
                         return self.lib_entries
         return self.lib_entries
 
-    def export(self, target_path):
+    def export_calibre_books(self, target_path, format=["pdf", "epub", "md", "txt"]):
         target = os.path.expanduser(target_path)
         updated = False
         new_docs = 0
@@ -251,6 +252,8 @@ class CalibreTools:
             short_title = entry["short_title"]
             for doc in entry["docs"]:
                 ext = doc["name"].split(".")[-1]
+                if ext not in format:
+                    continue
                 doc_name = os.path.join(folder, f"{short_title}.{ext}")
                 if not os.path.exists(doc_name):
                     # Copy file
@@ -325,24 +328,29 @@ class CalibreTools:
         name = name.replace(" _", " ")
         return name
 
-    def export_to_markdown(self, output_path, max_entries=None, cover_rel_path=None):
+    def export_calibre_metadata_to_markdown(
+        self, output_path, max_entries=None, cover_rel_path=None
+    ):
+        output_path = os.path.expanduser(output_path)
         if not os.path.exists(output_path):
             os.makedirs(output_path)
         if cover_rel_path is None:
             cover_rel_path = "Covers"
         cover_full_path = os.path.join(output_path, cover_rel_path)
+        if not os.path.exists(cover_full_path):
+            os.makedirs(cover_full_path)
         n = 0
         errs = 0
         for entry in self.lib_entries:
-            mandatory_fields = ["title", "creators", "uuid", "date", "timestamp"]
+            mandatory_fields = ["title", "creators", "uuid", "date", "date_added"]
             for field in mandatory_fields:
                 if field not in entry.keys():
                     errs += 1
                     print(f"Missing field {field} in entry {entry}")
                     continue
-            sanitized_title = self._sanitized_filename(entry["title"])
+            sanitized_title = self._sanitized_md_filename(entry["title"])
             md_filename = os.path.join(output_path, f"{sanitized_title}.md")
-            md = f"---\ncreation: {entry['timestamp']}\ntitle: {entry['title']}\nuuid: {entry['uuid']}\nauthors:\n"
+            md = f"---\ncreation: {entry['date_added']}\ntitle: {entry['title']}\nuuid: {entry['uuid']}\nauthors:\n"
             # foot_tags=''
             foot_authors = ""
             authors = entry["creators"]
@@ -351,21 +359,25 @@ class CalibreTools:
                 foot_authors += f"[[{author}]], "
             special_fields = ["cover", "comments", "tags", "formats"]
             md += "tags:\n  - Library/Calibre\n"
-            if "series" in entry.keys():
+            if "series" in entry.keys() and entry["series"] is not None:
                 ser = entry["series"].replace(" ", "_")
                 md += f"  - Series/{ser}\n"
-            if "subjects" in entry.keys():
+            if "subjects" in entry.keys() and entry["subjects"] is not None:
                 tags = entry["subjects"]
                 for tag in tags:
                     filt_tag = tag.strip().replace(" ", "_")
                     md += f"  - {filt_tag}\n"
-            if "formats" in entry.keys():
+            if "formats" in entry.keys() and entry["formats"] is not None:
                 md += "formats:\n"
                 formats = entry["formats"]
                 for format in formats:
                     md += f"  - {format.strip()}\n"
             for field in entry.keys():
-                if field not in mandatory_fields and field not in special_fields:
+                if (
+                    field not in mandatory_fields
+                    and field not in special_fields
+                    and entry[field] is not None
+                ):
                     md += f"{field}: {entry[field]}\n"
             md += "---\n"
 
@@ -379,14 +391,14 @@ class CalibreTools:
                     md += f", "
                 md += f"{author}"
             md += "_\n\n"
-            if "calibre_id" in entry.keys():
-                md += f"[Calibre-link]({CalibreTools._gen_link(entry['calibre_id'], self.calibre_library_name)})\n\n"
-            if "cover" in entry.keys():
-                cover_path = self._gen_thumbnail(
+            if "calibre_id" in entry.keys() and entry["calibre_id"] is not None:
+                md += f"[Calibre-link]({self._gen_md_calibre_link(entry['calibre_id'])})\n\n"
+            if "cover" in entry.keys() and entry["cover"] is not None:
+                cover_path = CalibreTools._gen_thumbnail(
                     entry["cover"], cover_rel_path, cover_full_path, entry["uuid"]
                 )
                 md += f"![{sanitized_title}]({cover_path})\n\n"
-            if "description" in entry.keys():
+            if "description" in entry.keys() and entry["description"] is not None:
                 cmt = entry["description"].replace("\n", "\n> ")
                 md += f"> {cmt}\n"
             # if len(foot_tags) > 3:
