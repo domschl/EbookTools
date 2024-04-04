@@ -96,11 +96,12 @@ class CalibreTools:
                         if u.attrib["id"] == "uuid_id":
                             uuid = u.text
 
-                    # get date added: (2022-10-06T22:00:00+00:00)
+                    publisher = metadata.find("dc:publisher", ns)
+                    publisher = publisher.text if publisher is not None else None
                     date = metadata.find("dc:date", ns)
                     date = date.text if date is not None else None
                     # convert to datetime, add utc timezone
-                    date = (
+                    pub_date = (
                         datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S%z")
                         .replace(tzinfo=timezone.utc)
                         .isoformat()
@@ -130,6 +131,17 @@ class CalibreTools:
                                 ).isoformat()
                             if meta.attrib["name"] == "calibre:title_sort":
                                 title_sort = meta.attrib["content"]
+                    identifiers = []
+                    # Find records of type:
+                    # <dc:identifier opf:scheme="MOBI-ASIN">B0BTX2378L</dc:identifier>
+                    for id in metadata.findall("dc:identifier", ns):
+                        # self.log.info(f"ID: {id.attrib} {id.text}")
+                        if "{http://www.idpf.org/2007/opf}scheme" in id.attrib:
+                            scheme = id.attrib["{http://www.idpf.org/2007/opf}scheme"]
+                            sid = id.text
+                            if scheme not in ["calibre", "uuid"]:
+                                identifiers.append(f"{scheme}/{sid}")
+                                # self.log.info(f"{title} Identifier: {scheme}: {sid}")
 
                     entry = {
                         "title": title,
@@ -139,9 +151,11 @@ class CalibreTools:
                         "series": series,
                         "subjects": subjects,
                         "languages": languages,
+                        "publisher": publisher,
+                        "identifiers": identifiers,
                         "uuid": uuid,
                         "calibre_id": calibre_id,
-                        "date": date,
+                        "publication_date": pub_date,
                         "date_added": date_added,
                     }
                     if "cover.jpg" in files:
@@ -342,7 +356,13 @@ class CalibreTools:
         n = 0
         errs = 0
         for entry in self.lib_entries:
-            mandatory_fields = ["title", "creators", "uuid", "date", "date_added"]
+            mandatory_fields = [
+                "title",
+                "creators",
+                "uuid",
+                "publication_date",
+                "date_added",
+            ]
             for field in mandatory_fields:
                 if field not in entry.keys():
                     errs += 1
@@ -371,6 +391,8 @@ class CalibreTools:
                 "short_folder",
                 "languages",
                 "calibre_id",
+                "identifiers",
+                "publication_date",
             ]
             md += "tags:\n  - Library/Calibre\n"
             if "series" in entry.keys() and entry["series"] is not None:
@@ -386,11 +408,23 @@ class CalibreTools:
                 formats = entry["formats"]
                 for format in formats:
                     md += f"  - {format.strip()}\n"
+            if (
+                "publication_date" in entry.keys()
+                and entry["publication_date"] is not None
+            ):
+                md += f"publication_date: {entry['publication_date']}\n"
             if "languages" in entry.keys() and entry["languages"] is not None:
                 md += "languages:\n"
                 languages = entry["languages"]
                 for lang in languages:
                     md += f"  - {lang.strip()}\n"
+            if "identifiers" in entry.keys() and entry["identifiers"] is not None:
+                md += "identifiers:\n"
+                ids = entry["identifiers"]
+                for id in ids:
+                    md += f"  - {id.strip()}\n"
+            if "calibre_id" in entry.keys() and entry["calibre_id"] is not None:
+                md += f"calibre_id: {entry['calibre_id']}\n"
             for field in entry.keys():
                 if (
                     field not in mandatory_fields
