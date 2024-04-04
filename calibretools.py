@@ -13,7 +13,7 @@ class CalibreTools:
     def __init__(self, calibre_path, calibre_library_name="Calibre_Library"):
         self.log = logging.getLogger("CalibreTools")
         self.calibre_library_name = calibre_library_name
-        cal_path = os.expanduser(calibre_path)
+        cal_path = os.path.expanduser(calibre_path)
         if not os.path.exists(cal_path):
             self.log.error(f"Calibre path does not exist: {cal_path}")
             raise ValueError(f"Calibre path does not exist: {cal_path}")
