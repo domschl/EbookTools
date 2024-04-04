@@ -1,5 +1,5 @@
 import logging
-from calibretools import CalibreTools
+from calibre_tools import CalibreTools
 
 if __name__ == "__main__":
     # Init logging

@@ -357,7 +357,21 @@ class CalibreTools:
             for author in authors:
                 md += f"  - {author}\n"
                 foot_authors += f"[[{author}]], "
-            special_fields = ["cover", "comments", "tags", "formats"]
+            special_fields = [
+                "cover",
+                "comments",
+                "tags",
+                "formats",
+                "description",
+                "subjects",
+                "series",
+                "name",
+                "docs",
+                "short_title",
+                "short_folder",
+                "languages",
+                "calibre_id",
+            ]
             md += "tags:\n  - Library/Calibre\n"
             if "series" in entry.keys() and entry["series"] is not None:
                 ser = entry["series"].replace(" ", "_")
@@ -372,6 +386,11 @@ class CalibreTools:
                 formats = entry["formats"]
                 for format in formats:
                     md += f"  - {format.strip()}\n"
+            if "languages" in entry.keys() and entry["languages"] is not None:
+                md += "languages:\n"
+                languages = entry["languages"]
+                for lang in languages:
+                    md += f"  - {lang.strip()}\n"
             for field in entry.keys():
                 if (
                     field not in mandatory_fields
