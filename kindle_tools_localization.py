@@ -1,9 +1,9 @@
-kindle_kw_locales = [
-    {
-        "locale": "en",
+kindle_kw_locales = {
+    "en": {
+        "info_line_transforms": [],
         "info_line_start": "- Your ",
         "info_line_date_start": "Added on ",
-        "info_line_type_loc_sep": " at location ",
+        "info_line_type_loc_sep": "at location ",
         "info_line_page_loc_sep": "location ",
         "info_line_page_sep": " on page ",
         "info_bookmark": "Bookmark",
@@ -23,5 +23,30 @@ kindle_kw_locales = [
             "November",
             "December",
         ],
-    }
-]
+    },
+    "de": {
+        "info_line_transforms": [("Dein ", "Deine ")],
+        "info_line_start": "- Deine ",
+        "info_line_date_start": "Hinzugefügt am ",
+        "info_line_type_loc_sep": "bei Position ",
+        "info_line_page_loc_sep": "Position ",
+        "info_line_page_sep": " auf Seite ",
+        "info_bookmark": "Lesezeichen",
+        "info_highlight": "Markierung",
+        "info_note": "Notiz",
+        "months": [
+            "Januar",
+            "Februar",
+            "März",
+            "April",
+            "Mai",
+            "Juni",
+            "Juli",
+            "August",
+            "September",
+            "Oktober",
+            "November",
+            "Dezember",
+        ],
+    },
+}

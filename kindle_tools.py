@@ -51,7 +51,8 @@ class KindleTools:
         return clippings_text
 
     def get_clipping_locale(self, clipping_text):
-        for locale in kindle_kw_locales:
+        for locale_name in kindle_kw_locales:
+            locale = kindle_kw_locales[locale_name]
             for line in clipping_text.split("\n"):
                 if (
                     line.startswith(locale["info_line_start"])
@@ -61,7 +62,7 @@ class KindleTools:
                         or line.find(locale["info_line_page_sep"]) > 0
                     )
                 ):
-                    return locale
+                    return locale_name, locale
         return None
 
     def parse_clippings(self, clippings_text):
@@ -70,6 +71,7 @@ class KindleTools:
             clipping = clipping.strip()
             if not clipping or clipping == "":
                 continue
+            print(clipping)
             lines = clipping.split("\n")
             title_author = ""
             header_lines = 0
@@ -83,16 +85,20 @@ class KindleTools:
                 else:
                     title_author = title_author + " " + line
             author_separator = title_author.rfind("(")
-            title = title_author[:author_separator].strip()
-            author = title_author[author_separator:].strip()
-            # remove brackets from author and change last, first to first last
-            author = author.replace("(", "").replace(")", "")
-            author_parts = author.split(",")
-            if len(author_parts) == 2:
-                author = author_parts[1].strip() + " " + author_parts[0].strip()
+            if author_separator > 0:
+                title = title_author[:author_separator].strip()
+                author = title_author[author_separator:].strip()
+                # remove brackets from author and change last, first to first last
+                author = author.replace("(", "").replace(")", "")
+                author_parts = author.split(",")
+                if len(author_parts) == 2:
+                    author = author_parts[1].strip() + " " + author_parts[0].strip()
+                else:
+                    self.log.warning(f"Could not parse author: {author}, using as-is")
             else:
-                self.log.warning(f"Could not parse author: {author}, using as-is")
-            locale = self.get_clipping_locale(clipping)
+                title = title_author
+                author = None
+            locale_name, locale = self.get_clipping_locale(clipping)
             if locale is None:
                 self.log.warning(f"Could not determine locale for clipping: {title}")
                 self.log.info(f"Clipping text: {clipping}")
@@ -100,6 +106,10 @@ class KindleTools:
 
             # get the type of clipping, location, and date
             clipping_type_location_date = lines[header_lines].strip()
+            for transform in locale["info_line_transforms"]:
+                clipping_type_location_date = clipping_type_location_date.replace(
+                    transform[0], transform[1]
+                )
             # separate the type, location, and date
             type_location_date = clipping_type_location_date.split(" | ")
             if len(type_location_date) == 2:
@@ -111,16 +121,25 @@ class KindleTools:
                     .replace(locale["info_line_date_start"], "")
                     .strip()
                 )
-                # separate the type and location
-                type_location_parts = type_location.split(
-                    locale["info_line_type_loc_sep"]
-                )
-                clipping_type = (
-                    type_location_parts[0]
-                    .replace(locale["info_line_start"], "")
-                    .strip()
-                )
-                clipping_location = type_location_parts[1].strip()
+                if locale["info_line_type_loc_sep"] in type_location:
+                    # separate the type and location
+                    type_location_parts = type_location.split(
+                        locale["info_line_type_loc_sep"]
+                    )
+                    clipping_type = (
+                        type_location_parts[0]
+                        .replace(locale["info_line_start"], "")
+                        .strip()
+                    )
+                    clipping_location = type_location_parts[1].strip()
+                else:
+                    type_page_parts = type_location.split(locale["info_line_page_sep"])
+                    clipping_type = (
+                        type_page_parts[0]
+                        .replace(locale["info_line_start"], "")
+                        .strip()
+                    )
+                    page_no = type_page_parts[1].strip()
             elif len(type_location_date) == 3:
                 # With page number
                 date = (
@@ -140,12 +159,12 @@ class KindleTools:
                 clipping_location = (
                     type_location_date[1]
                     .strip()
-                    .replace(locale["info_line_page_loc_sep"], "")
+                    .replace(locale["info_line_type_loc_sep"], "")
                 )
             # get the text of the clipping
             clipping_text = "\n".join(lines[header_lines + 1 :]).strip()
             # convert date to ISO format
-            if locale["locale"] == "en":
+            if locale_name == "en":
                 # Tuesday, 28 March 2023 13:48:18
                 date_parts = date.split(" ")
                 day = int(date_parts[1])
@@ -159,6 +178,30 @@ class KindleTools:
                 ).astimezone(datetime.datetime.now().astimezone().tzinfo)
                 # convert to UTC
                 dt_utc = dt_local.astimezone(datetime.timezone.utc)
+            elif locale_name == "de":
+                # Dienstag, 28. März 2023 13:48:18
+                print(date)
+                date_parts = date.split(" ")
+                print(date_parts)
+                day = int(date_parts[1][:-1])
+                month = locale["months"].index(date_parts[2]) + 1
+                year = date_parts[3]
+                time = date_parts[4]
+                iso_date_local = f"{year}-{month:02d}-{day:02d}T{time}"
+                # convert to datetime and set timezone to local time
+                dt_local = datetime.datetime.strptime(
+                    iso_date_local, "%Y-%m-%dT%H:%M:%S"
+                ).astimezone(datetime.datetime.now().astimezone().tzinfo)
+                # convert to UTC
+                dt_utc = dt_local.astimezone(datetime.timezone.utc)
+
+                locale_en = kindle_kw_locales["en"]
+                if clipping_type == locale["info_bookmark"]:
+                    clipping_type = locale_en["info_bookmark"]
+                elif clipping_type == locale["info_highlight"]:
+                    clipping_type = locale_en["info_highlight"]
+                elif clipping_type == locale["info_note"]:
+                    clipping_type = locale_en["info_note"]
             else:
                 self.log.error(f"Unsupported locale: {locale['locale']}")
                 return None
