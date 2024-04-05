@@ -8,6 +8,8 @@ import shutil
 import json
 from PIL import Image
 
+from ebook_utils import sanitized_md_filename
+
 
 class CalibreTools:
     def __init__(self, calibre_path, calibre_library_name="Calibre_Library"):
@@ -331,17 +333,6 @@ class CalibreTools:
         link = f"calibre://show-book/_hex_-{hex_name}/{id}"
         return link
 
-    @staticmethod
-    def _sanitized_md_filename(name):
-        bad_chars = "\\/:*?\"<>|.`'\n\r\t[]{}()&^%$#@!~"
-        for char in bad_chars:
-            name = name.replace(char, "_")
-        name = name.replace("__", "_")
-        name = name.replace(" _ ", ", ")
-        name = name.replace("_ ", ", ")
-        name = name.replace(" _", " ")
-        return name
-
     def export_calibre_metadata_to_markdown(
         self, output_path, max_entries=None, cover_rel_path=None
     ):
@@ -368,7 +359,7 @@ class CalibreTools:
                     errs += 1
                     print(f"Missing field {field} in entry {entry}")
                     continue
-            sanitized_title = self._sanitized_md_filename(entry["title"])
+            sanitized_title = sanitized_md_filename(entry["title"])
             md_filename = os.path.join(output_path, f"{sanitized_title}.md")
             md = f"---\ncreation: {entry['date_added']}\ntitle: {entry['title']}\nuuid: {entry['uuid']}\nauthors:\n"
             # foot_tags=''
