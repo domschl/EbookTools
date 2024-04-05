@@ -19,8 +19,10 @@ if __name__ == "__main__":
     kindle = KindleTools()
     if kindle.check_for_connected_kindle() is False:
         logger.error("No Kindle connected!")
-
-    clippings_text = kindle.get_clippings_text("~/Downloads/My Clippings.txt")
+        # clippings_text = kindle.get_clippings_text("~/Downloads/My Clippings.txt")
+        exit(1)
+    else:
+        clippings_text = kindle.get_clippings_text()
     clippings = kindle.parse_clippings(clippings_text)
     if clippings is None or len(clippings) == 0:
         logger.error("No clippings found, something went wrong...")
