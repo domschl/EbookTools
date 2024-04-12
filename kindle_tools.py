@@ -7,6 +7,15 @@ from kindle_tools_localization import kindle_kw_locales
 
 
 class KindleTools:
+    """Class to manage the Kindle clippings file
+
+    Kindle clippings for notes, highlights, and bookmarks are exported as JSON.
+
+    Note that Kindle clipping format is difficult to parse since it is very locale-specific.
+    You can add languages to the kindle_kw_locales dictionary in kindle_tools_localization.py.
+    Currently, only English and German are supported.
+    """
+
     def __init__(self):
         self.log = logging.getLogger("KindleTools")
         self.mount_folder = None

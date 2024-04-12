@@ -12,6 +12,13 @@ from ebook_utils import sanitized_md_filename
 
 
 class CalibreTools:
+    """ "Tools to manage Calibre library metadata and export to markdown
+
+    - The library uses the metadata.opf files in the Calibre library to extract metadata
+    - It can export books of given format as folder structure
+    - It can export metadata to markdown files so that the library of books can be referred to in markdown notes collections
+    """
+
     def __init__(self, calibre_path, calibre_library_name="Calibre_Library"):
         self.log = logging.getLogger("CalibreTools")
         self.calibre_library_name = calibre_library_name
