@@ -7,6 +7,7 @@ import hashlib
 import shutil
 import json
 from PIL import Image
+import unicodedata
 
 from ebook_utils import sanitized_md_filename
 
@@ -260,14 +261,29 @@ class CalibreTools:
                         return self.lib_entries
         return self.lib_entries
 
-    def export_calibre_books(self, target_path, format=["pdf", "epub", "md", "txt"]):
+    def export_calibre_books(
+        self,
+        target_path,
+        format=["pdf", "epub", "md", "txt"],
+        dry_run=False,
+        delete=False,
+    ):
         target = os.path.expanduser(target_path)
         updated = False
         new_docs = 0
         upd_docs = 0
         upd_doc_names = []
         if not os.path.exists(target):
+            self.log.info(f"Creating target path {target}")
             os.makedirs(target)
+        # Enumerate all files in target:
+        target_existing = []
+        for root, dirs, files in os.walk(target):
+            for file in files:
+                filename = os.path.join(root, file)
+                # normalize filenames through unicodedata decomposition and composition to avoid iCloud+AFTP Unicode encoding issues
+                filename = unicodedata.normalize("NFC", filename)
+                target_existing.append(filename)
         for entry in self.lib_entries:
             folder = os.path.join(target, entry["short_folder"])
             if not os.path.exists(folder):
@@ -278,15 +294,20 @@ class CalibreTools:
                 if ext not in format:
                     continue
                 doc_name = os.path.join(folder, f"{short_title}.{ext}")
+                # normalize filenames through unicodedata decomposition and composition to avoid iCloud+AFTP Unicode encoding issues
+                doc_name = unicodedata.normalize("NFC", doc_name)
                 if not os.path.exists(doc_name):
                     # Copy file
                     updated = True
                     new_docs += 1
-                    shutil.copy2(doc["path"], doc_name)
+                    if dry_run is False:
+                        shutil.copy2(doc["path"], doc_name)
+                        self.log.info(f"Copied {doc['name']} to {folder}")
+                    else:
+                        self.log.info(f"Would copy {doc['name']} to {folder}")
                     if "repo_path" not in entry:
                         entry["repo_path"] = []
                     entry["repo_path"].append(doc_name)
-                    self.log.info(f"Copied {doc['name']} to {folder}")
                 else:
                     # Check sha256:
                     sha256 = CalibreTools._get_sha256(doc_name)
@@ -297,12 +318,36 @@ class CalibreTools:
                         updated = True
                         upd_docs += 1
                         upd_doc_names.append(doc_name)
-                        shutil.copy2(doc["path"], doc_name)
-                        self.log.warning(
-                            f"Updated **CHANGED** {doc['name']} in {folder}"
+                        if dry_run is False:
+                            shutil.copy2(doc["path"], doc_name)
+                            self.log.warning(
+                                f"Updated **CHANGED** {doc['name']} in {folder}"
+                            )
+                        else:
+                            self.log.warning(
+                                f"Would update **CHANGED** {doc['name']} in {folder}"
+                            )
+                    # Remove from target_existing
+                    if doc_name in target_existing:
+                        target_existing.remove(doc_name)
+                    else:
+                        self.log.error(
+                            f"File {doc_name} not found in target_existing, Unicode encoding troubles in filename is most probable cause, manual cleanup required!"
                         )
+                        updated = True
+        if len(target_existing) > 0:
+            self.log.warning("Found files in target that are not in library:")
+            updated = True
+            for file in target_existing:
+                if delete is True and dry_run is False:
+                    os.remove(file)
+                    self.log.warning(f"Deleted {file}")
+                else:
+                    self.log.warning(f"Would delete {file}")
         if updated:
-            self.log.info(f"Updated, new: {new_docs}, updated: {upd_docs}")
+            self.log.info(
+                f"Updated, new: {new_docs}, updated: {upd_docs}, debris: {len(target_existing)}"
+            )
             if len(upd_doc_names) > 0:
                 self.log.info("Updated files:")
                 for doc in upd_doc_names:
@@ -345,6 +390,7 @@ class CalibreTools:
     ):
         output_path = os.path.expanduser(output_path)
         if not os.path.exists(output_path):
+            self.log.info(f"Creating output path {output_path}")
             os.makedirs(output_path)
         if cover_rel_path is None:
             cover_rel_path = "Covers"
