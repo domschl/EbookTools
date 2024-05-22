@@ -6,8 +6,13 @@ from datetime import timezone
 import hashlib
 import shutil
 import json
-from PIL import Image
 import unicodedata
+import copy
+import html
+
+from PIL import Image
+import frontmatter  ## pip install python-frontmatter
+from bs4 import BeautifulSoup  ## pip install beautifulsoup4
 
 from ebook_utils import sanitized_md_filename
 
@@ -89,8 +94,16 @@ class CalibreTools:
                     description = metadata.find("dc:description", ns)
                     description = description.text if description is not None else None
 
-                    creator = metadata.find("dc:creator", ns)
-                    creators = creator.text.split(", ") if creator is not None else []
+                    # creator = metadata.find("dc:creator", ns)
+                    # creators = creator.text.split(", ") if creator is not None else []
+                    # Get all authors from 'role': <dc:creator opf:file-as="Berlitz, Charles &amp; Moore, William L." opf:role="aut">Charles Berlitz</dc:creator>
+# id.attrib["{http://www.idpf.org/2007/opf}scheme"]
+                    creators = []
+                    for creator in metadata.findall("dc:creator", ns):
+                        if "{http://www.idpf.org/2007/opf}role" in creator.attrib:
+                            if creator.attrib["{http://www.idpf.org/2007/opf}role"] == "aut":
+                                creators.append(creator.text)
+                    
                     subjects = metadata.findall("dc:subject", ns)
                     subjects = [subject.text for subject in subjects]
                     languages = metadata.findall("dc:language", ns)
@@ -369,15 +382,93 @@ class CalibreTools:
             self.lib_entries = json.load(f)
         return self.lib_entries
 
-    @staticmethod
-    def _gen_thumbnail(image_path, thumb_dir, thumb_dir_full, uuid, size=(128, 128)):
+    def _gen_thumbnail(
+        self, image_path, thumb_dir, thumb_dir_full, uuid, size=(128, 128), force=False
+    ):
         dest_path_full = os.path.join(thumb_dir_full, uuid + ".jpg")
         dest_path_rel = os.path.join(thumb_dir, uuid + ".jpg")
+
+        if os.path.exists(dest_path_full) and force is False:
+            # self.log.info(f"Thumbnail {dest_path_full} already exists")
+            return dest_path_rel
 
         with Image.open(image_path) as im:
             im.thumbnail(size)
             im.save(dest_path_full, "JPEG")
         return dest_path_rel
+
+    def repairYaml(self, txt):
+        lines = txt.split("\n")
+        in_front = False
+        changed = 0
+        for ind, line in enumerate(lines):
+            oldline = copy.copy(line)
+            if in_front is False:
+                if line == "---":
+                    in_front = True
+                else:
+                    return txt, False
+            else:
+                if line == "---":
+                    break
+                else:
+                    fields = ["title", "title_sort"]
+                    for field in fields:
+                        tok = field + ": "
+                        tokf = tok + '"'
+                        if line.startswith(tok):
+                            if line.startswith(tokf):
+                                continue
+                            else:
+                                val = line[len(tok) :]
+                                val = val.replace('"', "'")
+
+                                lines[ind] = tokf + val + '"'
+                                # print(f"REPAIR: {oldline}->{lines[ind]}")
+                                changed += 1
+        if changed > 0:
+            txt = "\n".join(lines)
+        return txt, changed
+
+    def notes_differ(self, note1, note2):
+        note1, changed1 = self.repairYaml(note1)
+        # if changed1 > 0:
+        #     self.log.warning(f"YAML repaired in note1")
+        fm1 = frontmatter.loads(note1)
+        try:
+            fm2 = frontmatter.loads(note2)
+        except Exception as e:
+            self.log.error(f"Error loading frontmatter from note2: {e}\n{note2}")
+            exit(-1)
+        # compare frontmatter
+
+        lines1 = fm1.content.split("\n")
+        for index, line in enumerate(lines1):
+            if line.startswith("_by "):
+                lines1[index] = line.replace(" & ", ", ")  ## Hack...
+
+        lines2 = fm2.content.split("\n")
+
+        for lines in [lines1, lines2]:
+            pops = []
+            for i in range(len(lines)):
+                lines[i] = lines[i].strip()
+                if lines[i] == "":
+                    # Prepend to pops to avoid index shift
+                    pops.insert(0, i)
+            for i in pops:
+                lines.pop(i)
+
+        diffs = 0
+        for lines1, lines2, dir in [
+            (lines1, lines2, "(1->2)"),
+            (lines2, lines1, "(2->1)"),
+        ]:
+            for index, line in enumerate(lines1):
+                if line not in lines2:
+                    print(f"Line[{index}] not found in other {dir}, len={len(line)}: |{line}|")
+                    diffs += 1
+        return diffs
 
     def _gen_md_calibre_link(self, id) -> str:
         # Example: calibre://show-book/_hex_-43616c696272655f4c696272617279/1515
@@ -414,13 +505,17 @@ class CalibreTools:
                     continue
             sanitized_title = sanitized_md_filename(entry["title"])
             md_filename = os.path.join(output_path, f"{sanitized_title}.md")
-            md = f"---\ncreation: {entry['date_added']}\ntitle: {entry['title']}\nuuid: {entry['uuid']}\nauthors:\n"
+            title = '"' + entry["title"].replace('"', "'") + '"'
+            md = f"---\ncreation: {entry['date_added']}\ntitle: {title}\nuuid: {entry['uuid']}\nauthors:\n"
             # foot_tags=''
             foot_authors = ""
             authors = entry["creators"]
-            for author in authors:
+            for ind, author in enumerate(authors):
                 md += f"  - {author}\n"
-                foot_authors += f"[[{author}]], "
+                if ind == len(authors) - 1:
+                    foot_authors += f"[[{author}]]"
+                else:
+                    foot_authors += f"[[{author}]], "
             special_fields = [
                 "cover",
                 "comments",
@@ -469,13 +564,17 @@ class CalibreTools:
                     md += f"  - {id.strip()}\n"
             if "calibre_id" in entry.keys() and entry["calibre_id"] is not None:
                 md += f"calibre_id: {entry['calibre_id']}\n"
+            string_fields = ['title_sort', 'publisher']
             for field in entry.keys():
                 if (
                     field not in mandatory_fields
                     and field not in special_fields
                     and entry[field] is not None
                 ):
-                    md += f"{field}: {entry[field]}\n"
+                    if field in string_fields:
+                        md += f"{field}: \"{entry[field].replace('"', "'")}\"\n"
+                    else:
+                        md += f"{field}: {entry[field]}\n"
             md += "---\n"
 
             md += f"\n# {entry['title']}\n\n"
@@ -491,21 +590,45 @@ class CalibreTools:
             if "calibre_id" in entry.keys() and entry["calibre_id"] is not None:
                 md += f"[Calibre-link]({self._gen_md_calibre_link(entry['calibre_id'])})\n\n"
             if "cover" in entry.keys() and entry["cover"] is not None:
-                cover_path = CalibreTools._gen_thumbnail(
-                    entry["cover"], cover_rel_path, cover_full_path, entry["uuid"]
+                cover_path = self._gen_thumbnail(
+                    entry["cover"],
+                    cover_rel_path,
+                    cover_full_path,
+                    entry["uuid"],
+                    force=False,
                 )
                 md += f"![{sanitized_title}]({cover_path})\n\n"
             if "description" in entry.keys() and entry["description"] is not None:
-                cmt = entry["description"].replace("\n", "\n> ")
+                html_text = entry["description"]
+                # Convert HTML to markdown
+                md_tokens = [("<h1>", "&num; "), ("<h2>", "&num;&num; "), ("<h3>", "&num;&num;&num; "), ("<h4>", "&num;&num;&num;&num; "), ("<em>", " *"),
+                             ("</h1>", "\n"), ("</h2>", "\n"), ("</h3>", "\n"), ("</h4>", "\n"), ("</em>", "* "), 
+                             ("<strong>", "**"), ("</strong>", "** "), ("<p>", ""), ("</p>", "\n"), ("<br>", "\n"), ("<br/>", "\n"), 
+                             ("<br />", "\n"), ("<li>", "- "), ("</li>", "\n"),
+                             ("  ", " "), ("  ", " ")]
+                for token in md_tokens:
+                    html_text = html_text.replace(token[0], token[1])
+                text = BeautifulSoup(html_text, "html.parser").get_text()
+                cmt = text.replace("\n", "\n> ")
                 md += f"> {cmt}\n"
             # if len(foot_tags) > 3:
             #     md += f"\nTags: {foot_tags[:-2]}\n"
             if len(foot_authors) > 3:
                 md += f"\nAuthors: {foot_authors}\n"
             if os.path.exists(md_filename):
-                print(f"File {md_filename} already exists")
-                errs += 1
-                continue
+                with open(md_filename, "r") as f:
+                    existing_md = f.read()
+                if existing_md == md:
+                    # self.log.info(f"File {md_filename} already exists and is unchanged")
+                    continue
+                else:
+                    diffs = self.notes_differ(existing_md, md)
+                    if diffs > 0:
+                        self.log.warning(
+                            f"File {md_filename} already exists but is changed, {diffs} differences found"
+                        )
+                        errs += 1
+                    continue
             with open(md_filename, "w") as f:
                 f.write(md)
             n += 1
