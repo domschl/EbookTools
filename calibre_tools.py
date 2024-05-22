@@ -601,10 +601,12 @@ class CalibreTools:
             if "description" in entry.keys() and entry["description"] is not None:
                 html_text = entry["description"]
                 # Convert HTML to markdown
-                md_tokens = [("<h1>", "&num; "), ("<h2>", "&num;&num; "), ("<h3>", "&num;&num;&num; "), ("<h4>", "&num;&num;&num;&num; "), ("<em>", " *"),
-                             ("</h1>", "\n"), ("</h2>", "\n"), ("</h3>", "\n"), ("</h4>", "\n"), ("</em>", "* "), 
-                             ("<strong>", "**"), ("</strong>", "** "), ("<p>", ""), ("</p>", "\n"), ("<br>", "\n"), ("<br/>", "\n"), 
-                             ("<br />", "\n"), ("<li>", "- "), ("</li>", "\n"),
+                md_tokens = [("<h1>", "&num; "), ("<h2>", "&num;&num; "), ("<h3>", "&num;&num;&num; "), ("<h4>", "&num;&num;&num;&num; "),
+                             ("</h1>", "\n\n"), ("</h2>", "\n\n"), ("</h3>", "\n\n"), ("</h4>", "\n\n"), 
+                             ("<em>", " *"), ("</em>", "* "), 
+                             ("<strong>", "**"), ("</strong>", "** "),
+                             ("<p>", ""), ("</p>", "\n\n"), ("<br>", "\n\n"), ("<br/>", "\n\n"), ("<br />", "\n\n"), 
+                             ("<li>", "- "), ("</li>", "\n"),
                              ("  ", " "), ("  ", " ")]
                 for token in md_tokens:
                     html_text = html_text.replace(token[0], token[1])
