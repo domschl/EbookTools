@@ -21,7 +21,7 @@ if __name__ == "__main__":
         args.remove("-d")
     if "-x" in args:
         delete = True
-        args.remove("-D")
+        args.remove("-x")
     if "-h" in args:
         print("Usage: python ebook_tools.py [export] [notes] [kindle] [-d] [-x]")
         print("  export: export books from Calibre Library to MetaLibrary folder")
@@ -56,6 +56,8 @@ if __name__ == "__main__":
         if do_notes is True:
             logger.info(f"Calibre Library {calibre.calibre_path}, copying metadata")
             n, errs = calibre.export_calibre_metadata_to_markdown("~/Downloads/Books")
+        else:
+            n, errs = 0, 0
         logger.info(
             f"Calibre Library {calibre.calibre_path}, {n} book-descriptions exported, {errs} errors"
         )

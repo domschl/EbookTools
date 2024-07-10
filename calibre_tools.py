@@ -430,26 +430,26 @@ class CalibreTools:
             txt = "\n".join(lines)
         return txt, changed
 
-    def notes_differ(self, note1, note2):
-        note1, changed1 = self.repairYaml(note1)
+    def notes_differ(self, old_note, new_note):
+        old_note, changed1 = self.repairYaml(old_note)
         # if changed1 > 0:
-        #     self.log.warning(f"YAML repaired in note1")
-        fm1 = frontmatter.loads(note1)
+        #     self.log.warning(f"YAML repaired in old_note")
+        old_fm = frontmatter.loads(old_note)
         try:
-            fm2 = frontmatter.loads(note2)
+            new_fm = frontmatter.loads(new_note)
         except Exception as e:
-            self.log.error(f"Error loading frontmatter from note2: {e}\n{note2}")
+            self.log.error(f"Error loading frontmatter from new_note: {e}\n{new_note}")
             exit(-1)
         # compare frontmatter
 
-        lines1 = fm1.content.split("\n")
-        for index, line in enumerate(lines1):
+        old_lines = old_fm.content.split("\n")
+        for index, line in enumerate(old_lines):
             if line.startswith("_by "):
-                lines1[index] = line.replace(" & ", ", ")  ## Hack...
+                old_lines[index] = line.replace(" & ", ", ")  ## Hack for changed author format
 
-        lines2 = fm2.content.split("\n")
+        new_lines = new_fm.content.split("\n")
 
-        for lines in [lines1, lines2]:
+        for lines in [old_lines, new_lines]:
             pops = []
             for i in range(len(lines)):
                 lines[i] = lines[i].strip()
@@ -460,12 +460,12 @@ class CalibreTools:
                 lines.pop(i)
 
         diffs = 0
-        for lines1, lines2, dir in [
-            (lines1, lines2, "(1->2)"),
-            (lines2, lines1, "(2->1)"),
+        for old_lines, new_lines, dir in [
+            (old_lines, new_lines, "(old->new)"),
+            (new_lines, old_lines, "(new->old)"),
         ]:
-            for index, line in enumerate(lines1):
-                if line not in lines2:
+            for index, line in enumerate(old_lines):
+                if line not in new_lines:
                     print(f"Line[{index}] not found in other {dir}, len={len(line)}: |{line}|")
                     diffs += 1
         return diffs
