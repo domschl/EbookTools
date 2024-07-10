@@ -355,11 +355,23 @@ class CalibreTools:
                 if delete is True and dry_run is False:
                     os.remove(file)
                     self.log.warning(f"Deleted {file}")
+                    # Check, if folder is empty, remove it
+                    folder = os.path.dirname(file)
                 else:
                     self.log.warning(f"Would delete {file}")
+        # Enumerate all folders, remove empty folders
+        debris = len(target_existing)
+        for root, dirs, files in os.walk(target, topdown=False):
+            if len(files) == 0 and len(dirs) == 0:
+                debris += 1
+                if delete is True and dry_run is False:
+                    os.rmdir(root)
+                    self.log.warning(f"Removed empty folder {root}")
+                else:
+                    self.log.warning(f"Would remove empty folder {root}")
         if updated:
             self.log.info(
-                f"Updated, new: {new_docs}, updated: {upd_docs}, debris: {len(target_existing)}"
+                f"Updated, new: {new_docs}, updated: {upd_docs}, debris: {debris}"
             )
             if len(upd_doc_names) > 0:
                 self.log.info("Updated files:")
