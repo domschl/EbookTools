@@ -489,7 +489,7 @@ class CalibreTools:
         return link
 
     def export_calibre_metadata_to_markdown(
-        self, output_path, max_entries=None, cover_rel_path=None
+        self, output_path, max_entries=None, cover_rel_path=None, update_existing=False
     ):
         output_path = os.path.expanduser(output_path)
         if not os.path.exists(output_path):
@@ -630,22 +630,27 @@ class CalibreTools:
             if len(foot_authors) > 3:
                 md += f"\nAuthors: {foot_authors}\n"
             if os.path.exists(md_filename):
-                with open(md_filename, "r") as f:
-                    existing_md = f.read()
-                if existing_md == md:
-                    # self.log.info(f"File {md_filename} already exists and is unchanged")
+                if update_existing is True:
+                    with open(md_filename, "r") as f:
+                        existing_md = f.read()
+                    if existing_md == md:
+                        self.log.info(f"File {md_filename} already exists and is unchanged")
+                    else:
+                        diffs = self.notes_differ(existing_md, md)
+                        if diffs > 0:
+                            self.log.warning(
+                                f"File {md_filename} already exists but is changed, {diffs} differences found, UPDATE NOT IMPLEMENTED"
+                            )
+                            errs += 1
+                        else:
+                            self.log.info("File {md_filename} has been updated, no significant change")
                     continue
                 else:
-                    diffs = self.notes_differ(existing_md, md)
-                    if diffs > 0:
-                        self.log.warning(
-                            f"File {md_filename} already exists but is changed, {diffs} differences found"
-                        )
-                        errs += 1
                     continue
-            with open(md_filename, "w") as f:
-                f.write(md)
-            n += 1
-            if n == max_entries:
-                break
+            else:
+                with open(md_filename, "w") as f:
+                    f.write(md)
+                n += 1
+                if n == max_entries:
+                    break
         return n, errs
