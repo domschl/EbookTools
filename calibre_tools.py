@@ -489,7 +489,7 @@ class CalibreTools:
         return link
 
     def export_calibre_metadata_to_markdown(
-        self, output_path, max_entries=None, cover_rel_path=None, update_existing=False
+        self, output_path, max_entries=None, cover_rel_path=None, update_existing=False, dry_run=False, delete=False
     ):
         output_path = os.path.expanduser(output_path)
         if not os.path.exists(output_path):
@@ -502,6 +502,12 @@ class CalibreTools:
             os.makedirs(cover_full_path)
         n = 0
         errs = 0
+        existing_notes = []
+        for root, dirs, files in os.walk(output_path):
+            for file in files:
+                if file.endswith(".md"):
+                    existing_notes.append(os.path.join(root, file))
+
         for entry in self.lib_entries:
             mandatory_fields = [
                 "title",
@@ -629,6 +635,9 @@ class CalibreTools:
             #     md += f"\nTags: {foot_tags[:-2]}\n"
             if len(foot_authors) > 3:
                 md += f"\nAuthors: {foot_authors}\n"
+            if md_filename in existing_notes:
+                # remove from existing_notes
+                existing_notes.remove(md_filename)
             if os.path.exists(md_filename):
                 if update_existing is True:
                     with open(md_filename, "r") as f:
@@ -648,9 +657,21 @@ class CalibreTools:
                 else:
                     continue
             else:
-                with open(md_filename, "w") as f:
-                    f.write(md)
+                if dry_run is False:
+                    with open(md_filename, "w") as f:
+                        f.write(md)
+                else:
+                    self.log.info(f"Would write file {md_filename}")
                 n += 1
                 if n == max_entries:
                     break
+        if len(existing_notes)>0:
+            self.log.warning(f"Found {len(existing_notes)} existing notes that are not in the library")
+            for note in existing_notes:
+                if delete is True:
+                    if dry_run is False:
+                        os.remove(note)
+                        self.log.warning(f"Deleted {note}")
+                    else:
+                        self.log.warning(f"Would delete {note}")
         return n, errs
