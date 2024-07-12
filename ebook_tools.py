@@ -11,7 +11,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    dry_run = False
+    dry_run = True
     delete = False
     do_export = False
     do_notes = False
@@ -21,6 +21,9 @@ if __name__ == "__main__":
     if "-d" in args:
         dry_run = True
         args.remove("-d")
+    if "-E" in args:
+        dry_run = False
+        args.remove("-E")
     if "-x" in args:
         delete = True
         args.remove("-x")
@@ -30,7 +33,8 @@ if __name__ == "__main__":
         print("  notes:  export metadata to Notes as Markdown files")
         print("  kindle: export Kindle clippings to Notes as Markdown files")
         print("  -d: dry run, do not copy files")
-        print("  -x: delete files that are debris")
+        print("  -E: execute, this can DELETE files, be careful, test first with -d")
+        print("  -x: delete files that are debris, DANGER, test first with -d")
         exit(0)
     if "export" in args:
         args.remove("export")
