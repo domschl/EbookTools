@@ -94,7 +94,7 @@ if __name__ == "__main__":
         if do_notes is True:
             logger.info(f"Calibre Library {calibre.calibre_path}, copying metadata")
             n, errs = calibre.export_calibre_metadata_to_markdown(
-                notes_path, dry_run=dry_run, delete=delete
+                notes_path, dry_run=dry_run, update_existing=False, delete=delete
             )
         else:
             n, errs = 0, 0
