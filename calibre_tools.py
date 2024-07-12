@@ -317,7 +317,10 @@ class CalibreTools:
                         shutil.copy2(doc["path"], doc_name)
                         self.log.info(f"Copied {doc['name']} to {folder}")
                     else:
-                        self.log.info(f"Would copy {doc['name']} to {folder}")
+                        # get file name for doc['name'] path:
+                        doc_file_name = os.path.basename(doc["path"])
+                        dest_file_path = os.path.join(folder, doc_file_name)
+                        self.log.info(f"Would create {dest_file_path} by copying {doc['name']} to {folder}")
                     if "repo_path" not in entry:
                         entry["repo_path"] = []
                     entry["repo_path"].append(doc_name)
@@ -511,6 +514,7 @@ class CalibreTools:
         for entry in self.lib_entries:
             mandatory_fields = [
                 "title",
+                "title_sort",
                 "creators",
                 "uuid",
                 "publication_date",

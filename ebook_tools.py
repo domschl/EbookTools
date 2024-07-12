@@ -18,12 +18,12 @@ if __name__ == "__main__":
     do_kindle = False
 
     args = sys.argv[1:]
-    if "-d" in args:
-        dry_run = True
-        args.remove("-d")
     if "-E" in args:
         dry_run = False
         args.remove("-E")
+    if "-d" in args:
+        dry_run = True
+        args.remove("-d")
     if "-x" in args:
         delete = True
         args.remove("-x")
@@ -32,7 +32,7 @@ if __name__ == "__main__":
         print("  export: export books from Calibre Library to MetaLibrary folder")
         print("  notes:  export metadata to Notes as Markdown files")
         print("  kindle: export Kindle clippings to Notes as Markdown files")
-        print("  -d: dry run, do not copy files")
+        print("  -d: dry run, do not copy or delete files")
         print("  -E: execute, this can DELETE files, be careful, test first with -d")
         print("  -x: delete files that are debris, DANGER, test first with -d")
         exit(0)
