@@ -612,14 +612,15 @@ class CalibreTools:
             if "calibre_id" in entry.keys() and entry["calibre_id"] is not None:
                 md += f"[Calibre-link]({self._gen_md_calibre_link(entry['calibre_id'])})\n\n"
             if "cover" in entry.keys() and entry["cover"] is not None:
-                cover_path = self._gen_thumbnail(
-                    entry["cover"],
-                    cover_rel_path,
-                    cover_full_path,
-                    entry["uuid"],
-                    force=False,
-                )
-                md += f"![{sanitized_title}]({cover_path})\n\n"
+                if dry_run is False:
+                    cover_path = self._gen_thumbnail(
+                        entry["cover"],
+                        cover_rel_path,
+                        cover_full_path,
+                        entry["uuid"],
+                        force=False,
+                    ) 
+                    md += f"![{sanitized_title}]({cover_path})\n\n"
             if "description" in entry.keys() and entry["description"] is not None:
                 html_text = entry["description"]
                 # Convert HTML to markdown
