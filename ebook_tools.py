@@ -5,6 +5,7 @@ import json
 
 from calibre_tools import CalibreTools
 from kindle_tools import KindleTools
+from md_tools import MdTools
 
 if __name__ == "__main__":
     # Init logging
@@ -56,7 +57,8 @@ if __name__ == "__main__":
             "calibre_path": "~/ReferenceLibrary/Calibre Library",
             "kindle_path": "~/Workbench/KindleClippings",
             "meta_path": "~/MetaLibrary",
-            "notes_path": "~/Notes/Books",
+            "notes_path": "~/Notes",
+            "notes_books_subfolder": "Books",
         }
         # Create dir
         os.makedirs(os.path.dirname(config_file), exist_ok=True)
@@ -72,6 +74,7 @@ if __name__ == "__main__":
             kindle_path = os.path.expanduser(config["kindle_path"])
             meta_path = os.path.expanduser(config["meta_path"])
             notes_path = os.path.expanduser(config["notes_path"])
+            notes_books_path = os.path.join(notes_path, config["notes_books_subfolder"])
         except Exception as e:
             logger.error(f"Error reading config file {config_file}: {e}")
             exit(1)
@@ -84,23 +87,31 @@ if __name__ == "__main__":
             exit(1)
 
     if do_export is True or do_notes is True:
-        calibre = CalibreTools(calibre_path=calibre_path)
-        logger.info(f"Calibre Library {calibre.calibre_path}, loading metadata")
-        calibre.load_calibre_library_metadata()
-        logger.info("Calibre Library loaded")
         if do_export is True:
+            calibre = CalibreTools(calibre_path=calibre_path)
+            logger.info(f"Calibre Library {calibre.calibre_path}, loading metadata")
+            calibre.load_calibre_library_metadata()
+            logger.info("Calibre Library loaded")
             logger.info(f"Calibre Library {calibre.calibre_path}, copying books")
             calibre.export_calibre_books(meta_path, dry_run=dry_run, delete=delete)
-        if do_notes is True:
-            logger.info(f"Calibre Library {calibre.calibre_path}, copying metadata")
-            n, errs = calibre.export_calibre_metadata_to_markdown(
-                notes_path, dry_run=dry_run, update_existing=False, delete=delete
+            logger.info(
+                f"Calibre Library {calibre.calibre_path}, {n} book-descriptions exported, {errs} errors"
             )
+        if do_notes is True:
+            notes = MdTools(
+                notes_folder=notes_path, notes_books_folder=notes_books_path
+            )
+            notes.read_notes()
+            n, errs = 0, 0
+            # logger.info(f"Calibre Library {calibre.calibre_path}, copying metadata")
+            # n, errs = calibre.export_calibre_metadata_to_markdown(
+            #     notes_books_path,
+            #     dry_run=dry_run,
+            #     update_existing=False,
+            #     delete=delete,
+            # )
         else:
             n, errs = 0, 0
-        logger.info(
-            f"Calibre Library {calibre.calibre_path}, {n} book-descriptions exported, {errs} errors"
-        )
     if do_kindle is True:
         kindle = KindleTools()
         clippings = []

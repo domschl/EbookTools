@@ -11,7 +11,6 @@ import copy
 import html
 
 from PIL import Image
-import frontmatter  ## pip install python-frontmatter
 from bs4 import BeautifulSoup  ## pip install beautifulsoup4
 
 from ebook_utils import sanitized_md_filename
@@ -411,79 +410,6 @@ class CalibreTools:
             im.thumbnail(size)
             im.save(dest_path_full, "JPEG")
         return dest_path_rel
-
-    def repairYaml(self, txt):
-        lines = txt.split("\n")
-        in_front = False
-        changed = 0
-        for ind, line in enumerate(lines):
-            oldline = copy.copy(line)
-            if in_front is False:
-                if line == "---":
-                    in_front = True
-                else:
-                    return txt, False
-            else:
-                if line == "---":
-                    break
-                else:
-                    fields = ["title", "title_sort"]
-                    for field in fields:
-                        tok = field + ": "
-                        tokf = tok + '"'
-                        if line.startswith(tok):
-                            if line.startswith(tokf):
-                                continue
-                            else:
-                                val = line[len(tok) :]
-                                val = val.replace('"', "'")
-
-                                lines[ind] = tokf + val + '"'
-                                # print(f"REPAIR: {oldline}->{lines[ind]}")
-                                changed += 1
-        if changed > 0:
-            txt = "\n".join(lines)
-        return txt, changed
-
-    def notes_differ(self, old_note, new_note):
-        old_note, changed1 = self.repairYaml(old_note)
-        # if changed1 > 0:
-        #     self.log.warning(f"YAML repaired in old_note")
-        old_fm = frontmatter.loads(old_note)
-        try:
-            new_fm = frontmatter.loads(new_note)
-        except Exception as e:
-            self.log.error(f"Error loading frontmatter from new_note: {e}\n{new_note}")
-            exit(-1)
-        # compare frontmatter
-
-        old_lines = old_fm.content.split("\n")
-        for index, line in enumerate(old_lines):
-            if line.startswith("_by "):
-                old_lines[index] = line.replace(" & ", ", ")  ## Hack for changed author format
-
-        new_lines = new_fm.content.split("\n")
-
-        for lines in [old_lines, new_lines]:
-            pops = []
-            for i in range(len(lines)):
-                lines[i] = lines[i].strip()
-                if lines[i] == "":
-                    # Prepend to pops to avoid index shift
-                    pops.insert(0, i)
-            for i in pops:
-                lines.pop(i)
-
-        diffs = 0
-        for old_lines, new_lines, dir in [
-            (old_lines, new_lines, "(old->new)"),
-            (new_lines, old_lines, "(new->old)"),
-        ]:
-            for index, line in enumerate(old_lines):
-                if line not in new_lines:
-                    print(f"Line[{index}] not found in other {dir}, len={len(line)}: |{line}|")
-                    diffs += 1
-        return diffs
 
     def _gen_md_calibre_link(self, id) -> str:
         # Example: calibre://show-book/_hex_-43616c696272655f4c696272617279/1515

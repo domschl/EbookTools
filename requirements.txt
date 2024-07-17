@@ -1,5 +1,4 @@
 pillow
-python-frontmatter
 beautifulsoup4
 lxml
 
