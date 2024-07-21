@@ -14,6 +14,7 @@ from PIL import Image
 from bs4 import BeautifulSoup  ## pip install beautifulsoup4
 
 from ebook_utils import sanitized_md_filename
+from calibre_tools_localization import calibre_prefixes
 
 
 class CalibreTools:
@@ -62,6 +63,14 @@ class CalibreTools:
         bad_chars = ["<", ">", ":", '"', "/", "\\", "|", "?", "*"]
         for c in bad_chars:
             s = s.replace(c, ",")
+        s = s.replace("__", "_")
+        s = s.replace(" _ ", ", ")
+        s = s.replace("_ ", ", ")
+        s = s.replace("  ", " ")
+        s = s.replace("  ", " ")
+        s = s.replace(",,", ",")
+        s = s.replace(" ,", " ")
+        s = s.replace("  ", " ")
         s = s.replace("  ", " ")
         s = s.strip()
         return s
@@ -73,6 +82,24 @@ class CalibreTools:
                 continue
             for file in files:
                 if file == "metadata.opf":
+
+                    title = None
+                    title_sort = None
+                    description = None
+                    creators = []
+                    series = None
+                    subjects = []
+                    languages = []
+                    publisher = None
+                    identifiers = []
+                    uuid = None
+                    calibre_id = None
+                    pub_date = None
+                    date_added = None
+                    
+                    # cover = None
+                    docs = []
+
                     # Read metadata.opf into python object using etree ET
                     filename = os.path.join(root, file)
                     root_xml = ET.parse(filename).getroot()
@@ -101,6 +128,8 @@ class CalibreTools:
                     for creator in metadata.findall("dc:creator", ns):
                         if "{http://www.idpf.org/2007/opf}role" in creator.attrib:
                             if creator.attrib["{http://www.idpf.org/2007/opf}role"] == "aut":
+                                if ',' in creator.text:
+                                    self.log.error(f"Author name contains comma: {creator.text}")
                                 creators.append(creator.text)
                     
                     subjects = metadata.findall("dc:subject", ns)
@@ -131,6 +160,8 @@ class CalibreTools:
 
                     series = None
                     date_added = None
+                    title_sort = None
+                    timestamp = None
                     for meta in metadata.findall("opf:meta", ns):
                         if "name" in meta.attrib:
                             if meta.attrib["name"] == "calibre:series":
@@ -153,6 +184,12 @@ class CalibreTools:
                                 ).isoformat()
                             if meta.attrib["name"] == "calibre:title_sort":
                                 title_sort = meta.attrib["content"]
+                                for lang in calibre_prefixes:  # remove localized prefixes ", The", ", Der", etc. (curr: DE, EN)
+                                    for prefix in calibre_prefixes[lang]["prefixes"]:
+                                        ending = f", {prefix}"
+                                        if title_sort.endswith(ending):
+                                            title_sort = title_sort[:-len(ending)]
+                                            break
                     identifiers = []
                     # Find records of type:
                     # <dc:identifier opf:scheme="MOBI-ASIN">B0BTX2378L</dc:identifier>
@@ -164,7 +201,6 @@ class CalibreTools:
                             if scheme not in ["calibre", "uuid"]:
                                 identifiers.append(f"{scheme}/{sid}")
                                 # self.log.info(f"{title} Identifier: {scheme}: {sid}")
-
                     entry = {
                         "title": title,
                         "title_sort": title_sort,
@@ -205,6 +241,7 @@ class CalibreTools:
                     entry["docs"] = docs
                     entry["formats"] = formats
                     short_title = entry["title_sort"]
+                    
                     title = entry["title"]
                     # If title ends with roman or arabic numerals, store them as postfix:
                     endfix = ""
@@ -251,6 +288,7 @@ class CalibreTools:
                             short_title = f"{short_title} {endfix}"
                     author = CalibreTools._clean_filename(entry["creators"][0])
                     short_title = f"{short_title.strip()} - {author}"
+
                     entry["short_title"] = short_title
                     entry["short_folder"] = f"{entry['series']}"
                     # Check if combination of short_title and short_folder is unique:
@@ -317,10 +355,7 @@ class CalibreTools:
                         shutil.copy2(doc["path"], doc_name)
                         self.log.info(f"Copied {doc['name']} to {folder}")
                     else:
-                        # get file name for doc['name'] path:
-                        doc_file_name = os.path.basename(doc["path"])
-                        dest_file_path = os.path.join(folder, doc_file_name)
-                        self.log.info(f"Would create {dest_file_path}") #  by copying {doc['name']} to {folder}")
+                        self.log.info(f"Would create {doc_name}")
                     if "repo_path" not in entry:
                         entry["repo_path"] = []
                     entry["repo_path"].append(doc_name)
@@ -337,11 +372,11 @@ class CalibreTools:
                         if dry_run is False:
                             shutil.copy2(doc["path"], doc_name)
                             self.log.warning(
-                                f"Updated **CHANGED** {doc['name']} in {folder}"
+                                f"Updated **CHANGED** {doc_name}"
                             )
                         else:
                             self.log.warning(
-                                f"Would update **CHANGED** {doc['name']} in {folder}"
+                                f"Would update **CHANGED** {doc_name}"
                             )
                     # Remove from target_existing
                     if doc_name in target_existing:
