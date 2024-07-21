@@ -284,6 +284,7 @@ class CalibreTools:
         updated = False
         new_docs = 0
         upd_docs = 0
+        debris = 0
         upd_doc_names = []
         if not os.path.exists(target):
             self.log.info(f"Creating target path {target}")
@@ -319,7 +320,7 @@ class CalibreTools:
                         # get file name for doc['name'] path:
                         doc_file_name = os.path.basename(doc["path"])
                         dest_file_path = os.path.join(folder, doc_file_name)
-                        self.log.info(f"Would create {dest_file_path} by copying {doc['name']} to {folder}")
+                        self.log.info(f"Would create {dest_file_path}") #  by copying {doc['name']} to {folder}")
                     if "repo_path" not in entry:
                         entry["repo_path"] = []
                     entry["repo_path"].append(doc_name)
@@ -381,6 +382,7 @@ class CalibreTools:
                     self.log.info(doc)
         else:
             self.log.info("No updates and no new files found, nothing to do.")
+        return new_docs, upd_docs, debris
 
     def save_state(self, target_path):
         repo_state = os.path.join(target_path, "repo_state.json")

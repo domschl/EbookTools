@@ -93,9 +93,11 @@ if __name__ == "__main__":
             calibre.load_calibre_library_metadata()
             logger.info("Calibre Library loaded")
             logger.info(f"Calibre Library {calibre.calibre_path}, copying books")
-            calibre.export_calibre_books(meta_path, dry_run=dry_run, delete=delete)
+            new_books, upd_books, debris = calibre.export_calibre_books(
+                meta_path, dry_run=dry_run, delete=delete
+            )
             logger.info(
-                f"Calibre Library {calibre.calibre_path}, {n} book-descriptions exported, {errs} errors"
+                f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"
             )
         if do_notes is True:
             notes = MdTools(
