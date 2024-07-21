@@ -192,8 +192,10 @@ class CalibreTools:
                                             break
                                 # Check if starts with lowercase
                                 if title_sort[0].islower():
-                                    self.log.warning(f"Shortened title starts with lowercase: {title_sort}, consider fixing!")
-                                    # title_sort = title_sort[0].upper() + title_sort[1:]  # automatic fixing can go wrong (jQuery, etc.)
+                                    # check if second character is uppercase (iPad, jQuery, etc.)
+                                    if len(title_sort)>1 and title_sort[1].islower():
+                                        self.log.warning(f"Shortened title starts with lowercase: {title_sort}, consider fixing!")
+                                        # title_sort = title_sort[0].upper() + title_sort[1:]  # automatic fixing can go wrong (jQuery, etc.)
                     identifiers = []
                     # Find records of type:
                     # <dc:identifier opf:scheme="MOBI-ASIN">B0BTX2378L</dc:identifier>
@@ -357,7 +359,7 @@ class CalibreTools:
                     new_docs += 1
                     if dry_run is False:
                         shutil.copy2(doc["path"], doc_name)
-                        self.log.info(f"Copied {doc['name']} to {folder}")
+                        self.log.info(f"Copied {doc_name}")
                     else:
                         self.log.info(f"Would create {doc_name}")
                     if "repo_path" not in entry:
@@ -389,6 +391,7 @@ class CalibreTools:
                         self.log.error(
                             f"File {doc_name} not found in target_existing, Unicode encoding troubles in filename is most probable cause, manual cleanup required!"
                         )
+                        self.log.warning("On macOS, filesystems that are unaware of upper/lowercase can cause this issue on renaming files with only case changes. Simply run twice!")
                         updated = True
         if len(target_existing) > 0:
             self.log.warning("Found files in target that are not in library:")
