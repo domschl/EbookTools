@@ -27,6 +27,8 @@ class CalibreTools:
         self.log = logging.getLogger("CalibreTools")
         self.calibre_library_name = calibre_library_name
         cal_path = os.path.expanduser(calibre_path)
+        self.sequence_number = 0
+        self.lib_entries = []
         if not os.path.exists(cal_path):
             self.log.error(f"Calibre path does not exist: {cal_path}")
             raise ValueError(f"Calibre path does not exist: {cal_path}")
@@ -323,6 +325,10 @@ class CalibreTools:
         delete=False,
     ):
         target = os.path.expanduser(target_path)
+        self.old_lib_entries, self.sequence_number = self.load_state(target)
+        if self.lib_entries is None or len(self.lib_entries) == 0:
+            self.log.error("No library entries found, cannot export")
+            return 0, 0, 0
         updated = False
         new_docs = 0
         upd_docs = 0
@@ -428,6 +434,7 @@ class CalibreTools:
                     self.log.warning(f"Removed empty folder {root}")
                 else:
                     self.log.warning(f"Would remove empty folder {root}")
+        update_state = False
         if updated:
             self.log.info(
                 f"Updated, new: {new_docs}, updated: {upd_docs}, debris: {debris}"
@@ -436,24 +443,60 @@ class CalibreTools:
                 self.log.info("Updated files:")
                 for doc in upd_doc_names:
                     self.log.info(doc)
+            if dry_run is False:
+                update_state = True
         else:
             self.log.info("No updates and no new files found, nothing to do.")
+        if update_state is True or self.sequence_number == 0:
+            self.sequence_number = self.save_state(target, self.lib_entries, self.sequence_number)
+            self.log.info(f"Saved state to {target}/repo_state.json, sequence number: {self.sequence_number}    ")
+
         return new_docs, upd_docs, debris
 
-    def save_state(self, target_path):
-        repo_state = os.path.join(target_path, "repo_state.json")
-        with open(repo_state, "w") as f:
-            json.dump(self.lib_entries, f, indent=4)
+    def save_state(self, target_path, lib_entries, sequence_number):
+        repo_state_filename = os.path.join(target_path, "repo_state.json")
+        sequence_number = sequence_number + 1
+        repo_state = {
+            "lib_entries": lib_entries,
+            "sequence_number": sequence_number,
+            "timestamp": datetime.datetime.now(tz=timezone.utc).isoformat(),
+        }
+        with open(repo_state_filename, "w") as f:
+            json.dump(repo_state, f, indent=4)
+        return sequence_number
 
     def load_state(self, target_path):
-        repo_state = os.path.join(target_path, "repo_state.json")
-        if not os.path.exists(repo_state):
-            self.log.error(f"State file not found at {repo_state}")
-            return
-        with open(repo_state, "r") as f:
-            self.lib_entries = json.load(f)
-        return self.lib_entries
+        repo_state_filename = os.path.join(target_path, "repo_state.json")
+        if not os.path.exists(repo_state_filename):
+            self.log.error(f"State file not found at {repo_state_filename}")
+            return [], 0
+        with open(repo_state_filename, "r") as f:
+            repo_state = json.load(f)
+            lib_entries = repo_state["lib_entries"]
+            sequence_number = repo_state["sequence_number"]
+            self.log.info(
+                f"Loaded state from {repo_state_filename}, sequence number: {self.sequence_number}"
+            )
+        return lib_entries, sequence_number
 
+    def check_state_change(self, target_path):
+        repo_state_filename = os.path.join(target_path, "repo_state.json")
+        if not os.path.exists(repo_state_filename):
+            self.log.error(f"State file not found at {repo_state_filename}")
+            return False
+        try:
+            with open(repo_state_filename, "r") as f:
+                repo_state = json.load(f)
+                sequence_number = repo_state["sequence_number"]
+                if sequence_number != self.sequence_number:
+                    self.log.warning(
+                        f"repo_state.json sequence number changed from {sequence_number} to {self.sequence_number}"
+                    )
+                    return True
+        except Exception as e:
+            self.log.error(f"Error reading repo_state.json: {e}")
+        return False
+    
     def _gen_thumbnail(
         self, image_path, thumb_dir, thumb_dir_full, uuid, size=(128, 128), force=False
     ):
