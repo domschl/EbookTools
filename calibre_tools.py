@@ -335,6 +335,11 @@ class CalibreTools:
         target_existing = []
         for root, dirs, files in os.walk(target):
             for file in files:
+                # if root is a dot dir, ignore
+                if os.path.basename(root).startswith("."):
+                    continue
+                if file == "repo_state.json":
+                    continue
                 filename = os.path.join(root, file)
                 # ignore dot files
                 if file.startswith("."):
