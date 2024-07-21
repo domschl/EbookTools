@@ -59,6 +59,7 @@ if __name__ == "__main__":
             "meta_path": "~/MetaLibrary",
             "notes_path": "~/Notes",
             "notes_books_subfolder": "Books",
+            "export_formats": ["epub", "pdf"],
         }
         # Create dir
         os.makedirs(os.path.dirname(config_file), exist_ok=True)
@@ -75,6 +76,7 @@ if __name__ == "__main__":
             meta_path = os.path.expanduser(config["meta_path"])
             notes_path = os.path.expanduser(config["notes_path"])
             notes_books_path = os.path.join(notes_path, config["notes_books_subfolder"])
+            export_formats = config["export_formats"]
         except Exception as e:
             logger.error(f"Error reading config file {config_file}: {e}")
             exit(1)
@@ -94,7 +96,7 @@ if __name__ == "__main__":
             logger.info("Calibre Library loaded")
             logger.info(f"Calibre Library {calibre.calibre_path}, copying books")
             new_books, upd_books, debris = calibre.export_calibre_books(
-                meta_path, dry_run=dry_run, delete=delete
+                meta_path, format=export_formats, dry_run=dry_run, delete=delete
             )
             logger.info(
                 f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"

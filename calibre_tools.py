@@ -7,8 +7,6 @@ import hashlib
 import shutil
 import json
 import unicodedata
-import copy
-import html
 
 from PIL import Image
 from bs4 import BeautifulSoup  ## pip install beautifulsoup4
@@ -338,6 +336,9 @@ class CalibreTools:
         for root, dirs, files in os.walk(target):
             for file in files:
                 filename = os.path.join(root, file)
+                # ignore dot files
+                if file.startswith("."):
+                    continue
                 # normalize filenames through unicodedata decomposition and composition to avoid iCloud+AFTP Unicode encoding issues
                 filename = unicodedata.normalize("NFC", filename)
                 target_existing.append(filename)
@@ -346,6 +347,10 @@ class CalibreTools:
             if not os.path.exists(folder) and not dry_run is True:
                 os.makedirs(folder)
             short_title = entry["short_title"]
+            num_docs = len(entry["docs"])
+            if num_docs == 0:
+                self.log.error(f"No documents found for {short_title}")
+
             for doc in entry["docs"]:
                 ext = doc["name"].split(".")[-1]
                 if ext not in format:
@@ -410,6 +415,10 @@ class CalibreTools:
             if len(files) == 0 and len(dirs) == 0:
                 debris += 1
                 if delete is True and dry_run is False:
+                    # get folder name without path:
+                    folder = os.path.basename(root)
+                    if folder.startswith("."):  # don't kill .dot folders!
+                        continue
                     os.rmdir(root)
                     self.log.warning(f"Removed empty folder {root}")
                 else:
