@@ -286,7 +286,7 @@ class CalibreTools:
         upd_docs = 0
         debris = 0
         upd_doc_names = []
-        if not os.path.exists(target):
+        if not os.path.exists(target) and not dry_run is True:
             self.log.info(f"Creating target path {target}")
             os.makedirs(target)
         # Enumerate all files in target:
@@ -299,7 +299,7 @@ class CalibreTools:
                 target_existing.append(filename)
         for entry in self.lib_entries:
             folder = os.path.join(target, entry["short_folder"])
-            if not os.path.exists(folder):
+            if not os.path.exists(folder) and not dry_run is True:
                 os.makedirs(folder)
             short_title = entry["short_title"]
             for doc in entry["docs"]:
@@ -423,13 +423,13 @@ class CalibreTools:
         self, output_path, max_entries=None, cover_rel_path=None, update_existing=False, dry_run=False, delete=False
     ):
         output_path = os.path.expanduser(output_path)
-        if not os.path.exists(output_path):
+        if not os.path.exists(output_path) and not dry_run is True:
             self.log.info(f"Creating output path {output_path}")
             os.makedirs(output_path)
         if cover_rel_path is None:
             cover_rel_path = "Covers"
         cover_full_path = os.path.join(output_path, cover_rel_path)
-        if not os.path.exists(cover_full_path):
+        if not os.path.exists(cover_full_path) and not dry_run is True:
             os.makedirs(cover_full_path)
         n = 0
         errs = 0
