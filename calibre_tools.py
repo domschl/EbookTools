@@ -190,6 +190,10 @@ class CalibreTools:
                                         if title_sort.endswith(ending):
                                             title_sort = title_sort[:-len(ending)]
                                             break
+                                # Check if starts with lowercase
+                                if title_sort[0].islower():
+                                    self.log.warning(f"Shortened title starts with lowercase: {title_sort}, consider fixing!")
+                                    # title_sort = title_sort[0].upper() + title_sort[1:]  # automatic fixing can go wrong (jQuery, etc.)
                     identifiers = []
                     # Find records of type:
                     # <dc:identifier opf:scheme="MOBI-ASIN">B0BTX2378L</dc:identifier>
