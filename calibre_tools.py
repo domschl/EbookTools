@@ -362,11 +362,13 @@ class CalibreTools:
             if num_docs == 0:
                 self.log.error(f"No documents found for {short_title}")
 
-            for doc in entry["docs"]:
+            for index, doc in enumerate(entry["docs"]):
                 ext = doc["name"].split(".")[-1]
+                ref_name = f"{short_title}.{ext}"
+                entry["docs"][index]["ref_name"] = ref_name    
                 if ext not in format:
                     continue
-                doc_name = os.path.join(folder, f"{short_title}.{ext}")
+                doc_name = os.path.join(folder, ref_name)
                 # normalize filenames through unicodedata decomposition and composition to avoid iCloud+AFTP Unicode encoding issues
                 doc_name = unicodedata.normalize("NFC", doc_name)
                 if not os.path.exists(doc_name):
