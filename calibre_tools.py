@@ -477,7 +477,7 @@ class CalibreTools:
             lib_entries = repo_state["lib_entries"]
             sequence_number = repo_state["sequence_number"]
             self.log.info(
-                f"Loaded state from {repo_state_filename}, sequence number: {self.sequence_number}"
+                f"Loaded state from {repo_state_filename}, sequence number: {sequence_number}"
             )
         return lib_entries, sequence_number
 
