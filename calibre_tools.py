@@ -495,7 +495,7 @@ class CalibreTools:
                         f"repo_state.json sequence number changed from {sequence_number} to {self.sequence_number}"
                     )
                     return True
-        except Exception as e:
+        except Exception as e:  
             self.log.error(f"Error reading repo_state.json: {e}")
         return False
     

@@ -2,6 +2,7 @@ import os
 import logging
 import copy
 import yaml
+import re
 
 from ebook_utils import sanitized_md_filename
 
@@ -13,7 +14,11 @@ class MdTools:
     """
 
     def __init__(
-        self, notes_folder, notes_books_folder=None, notes_annotations_folder=None
+        self,
+        notes_folder,
+        notes_books_folder=None,
+        notes_annotations_folder=None,
+        skip_dirs=[".obsidian"],
     ):
         self.log = logging.getLogger("MdTools")
         self.notes_folder = notes_folder
@@ -23,6 +28,7 @@ class MdTools:
             notes_annotations_folder = os.path.join(notes_folder, "BookNotes")
         self.notes_books_folder = notes_books_folder
         self.notes_annotations_folder = notes_annotations_folder
+        self.skip_dirs = skip_dirs
         if not os.path.exists(self.notes_folder):
             raise FileNotFoundError(f"Notes folder {self.notes_folder} does not exist")
         if not os.path.exists(self.notes_books_folder):
@@ -31,6 +37,7 @@ class MdTools:
         if not os.path.exists(self.notes_annotations_folder):
             os.makedirs(self.notes_annotations_folder)
             self.log.info(f"Created folder {self.notes_annotations_folder}")
+        self.read_notes(skip_dirs=skip_dirs)
 
     def _repairYaml(self, txt):
         lines = txt.split("\n")
@@ -141,6 +148,29 @@ class MdTools:
         header = yaml.dump(metadata, default_flow_style=False, indent=2)
         return f"---\n{header}---\n{content}"
 
+    def note_cache_links(self, note):
+        links = []
+        if "content" in note:
+            content = note["content"]
+            for line in content.split("\n"):
+                # Find links of format [[link]] or [[link|alias]]
+                ind = line.find("[[")
+                while ind >= 0:
+                    ind2a = line.find("]]", ind)
+                    ind2b = line.find("|", ind)
+                    if ind2a <= 0:
+                        ind = line.find("[[", ind + 2)
+                        continue
+                    if ind2b > 0 and ind2b < ind2a:
+                        ind2 = ind2b
+                    else:
+                        ind2 = ind2a
+                    link = line[ind + 2 : ind2].strip().lower()
+                    links.append(link)
+                    ind = line.find("[[", ind2)
+            note["links"] = links
+        return links
+
     def read_md_file(self, filename, verbose=False):
         with open(filename, "r") as f:
             note_raw = f.read()
@@ -155,18 +185,39 @@ class MdTools:
                 if verbose is True:
                     self.log.warning(f"YAML repaired in {filename}")
             note = {}
-
+            note["metadata_changes"] = changed
             note["metadata"], note["content"] = self.parse_frontmatter(note_text)
-            # Reassemble the note
-
+            self.note_cache_links(note)
+            # Reassemble the note  XXX can be removed:
             note_reassembled = self.assemble_markdown(note["metadata"], note["content"])
             if self.notes_differ(note_text, note_reassembled) > 0:
                 self.log.error(f"Error reassembling note from {filename}")
                 return None
         return note
 
+    def register_note(self, note_filename, note):
+        note_file_title = os.path.basename(note_filename)[:-3].lower()
+        if note_file_title in self.note_file_title_to_filename:
+            self.log.error(
+                f"Duplicate note basename {note_file_title} encountered at {note_filename}, ignoring note, please rename!"
+            )
+            return
+        if note is not None:
+            if "metadata" in note and "uuid" in note["metadata"]:
+                uuid = note["metadata"]["uuid"]
+                if uuid in self.uuid_to_note_filename:
+                    self.log.error(
+                        f"Duplicate uuid {uuid} encountered at {note_filename}, ignoring note, please make UUID unique!"
+                    )
+                    return
+                self.uuid_to_note_filename[uuid] = note_filename
+            self.note_file_title_to_filename[note_file_title] = note_filename
+            self.notes[note_filename] = note
+
     def read_notes(self, skip_dirs=[".obsidian"]):
         self.notes = {}
+        self.uuid_to_note_filename = {}
+        self.note_file_title_to_filename = {}
 
         for root, dirs, files in os.walk(self.notes_folder):
             for skip_dir in skip_dirs:
@@ -178,18 +229,97 @@ class MdTools:
                     note_filename = os.path.join(root, file)
                     note = self.read_md_file(note_filename)
                     if note is not None:
-                        self.notes[note_filename] = note
+                        self.register_note(note_filename, note)
+
         self.log.info(f"Found {len(self.notes)} existing markdown notes")
         return
 
-    def get_books(self):
-        self.books = []
-        for root, dirs, files in os.walk(self.notes_books_folder):
-            for file in files:
-                if file.endswith(".md"):
-                    self.books.append(os.path.join(root, file))
-        self.log.info(f"Found {len(self.books)} existing markdown notes on books")
-        return self.books
+    # def get_books(self):
+    #     self.books = []
+    #     for root, dirs, files in os.walk(self.notes_books_folder):
+    #         for file in files:
+    #             if file.endswith(".md"):
+    #                 self.books.append(os.path.join(root, file))
+    #     self.log.info(f"Found {len(self.books)} existing markdown notes on books")
+    #     return self.books
+
+    def rename_note(
+        self, current_filename, new_filename, update_links=True, dry_run=False
+    ):
+        if current_filename not in self.notes:
+            self.log.error(f"Note {current_filename} not found")
+            return
+        note = self.notes[current_filename]
+        if new_filename in self.notes:
+            self.log.error(f"Note {new_filename} already exists")
+            return
+        self.notes[new_filename] = note
+        if dry_run is False:
+            del self.notes[current_filename]
+            os.rename(current_filename, new_filename)
+            self.log.info(f"Note {current_filename} renamed to {new_filename}")
+        else:
+            self.log.info(
+                f"Dry run: Note {current_filename} would be renamed to {new_filename}"
+            )
+
+        if update_links is True:
+            # Update links of format [[old_link]] or [[old_link|alias]] using regex links are case-insensitive
+            old_link = os.path.basename(current_filename)[:-3].lower()
+            new_link = os.path.basename(new_filename)[:-3]
+
+            for note_filename in self.notes:
+                note = self.notes[note_filename]
+                if "content" in note:
+                    content = note["content"]
+                    new_content = []
+                    for line in content.split("\n"):
+                        test_line = line.lower()
+                        ind1 = test_line.find("[[")
+                        if ind1 >= 0:
+                            while ind1 >= 0:
+                                ind2a = test_line.find("]]", ind1)
+                                ind2b = test_line.find("|", ind1)
+                                if ind2a <= 0:
+                                    ind1 = test_line.find("[[", ind1 + 2)
+                                    continue
+                                if ind2b > 0 and ind2b < ind2a:
+                                    ind2 = ind2b
+                                else:
+                                    ind2 = ind2a
+                                link = test_line[ind1 + 2 : ind2].strip()
+                                if link == old_link:
+                                    new_line = (
+                                        line[:ind1] + "[[" + new_link + line[ind2:]
+                                    )
+                                    new_content.append(new_line)
+                                    if dry_run is False:
+                                        self.log.info(
+                                            f"Changed link {link} to {new_link} in {note_filename}:"
+                                        )
+                                        self.log.info(f"  {line} -> {new_line}")
+                                    else:
+                                        new_content.append(line)
+                                        self.log.info(
+                                            f"WOULD Change link {link} to {new_link} in {note_filename}:"
+                                        )
+                                        self.log.info(f"  {line} -> {new_line}")
+                                else:
+                                    new_content.append(line)
+                                ind1 = test_line.find("[[", ind2)
+                        else:
+                            new_content.append(line)
+                    note["content"] = "\n".join(new_content)
+                    self.note_cache_links(note)
+                    note_reassembled = self.assemble_markdown(
+                        note["metadata"], note["content"]
+                    )
+                    if dry_run is False:
+                        with open(note_filename, "w") as f:
+                            f.write(note_reassembled)
+                        self.log.info(f"Note {note_filename} updated")
+                    else:
+                        self.log.info(f"Dry run: Note {note_filename} would be updated")
 
     def md_filename(self, name):
         name = sanitized_md_filename(name)
