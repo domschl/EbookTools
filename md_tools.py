@@ -146,7 +146,7 @@ class MdTools:
         if metadata is None or metadata == {}:
             return content
         header = yaml.dump(metadata, default_flow_style=False, indent=2)
-        return f"---\n{header}---\n{content}"
+        return f"---\n{header}---\n\n{content}"
 
     def note_cache_links(self, note):
         links = []

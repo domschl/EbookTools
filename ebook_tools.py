@@ -102,8 +102,11 @@ if __name__ == "__main__":
             f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"
         )
     if do_notes is True:
+        logger.info(f"Loading notes from {notes_path}")
+        notes = MdTools(notes_folder=notes_path, notes_books_folder=notes_books_path)
         logger.info(f"Exporting metadata to {notes_books_path}")
         n, errs = calibre.export_calibre_metadata_to_markdown(
+            notes,
             notes_books_path,
             dry_run=dry_run,
             update_existing=False,

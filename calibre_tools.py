@@ -521,7 +521,7 @@ class CalibreTools:
         return link
 
     def export_calibre_metadata_to_markdown(
-        self, output_path, max_entries=None, cover_rel_path=None, update_existing=False, dry_run=False, delete=False
+        self, notes, output_path, max_entries=None, cover_rel_path=None, update_existing=False, dry_run=False, delete=False
     ):
         output_path = os.path.expanduser(output_path)
         if not os.path.exists(output_path) and not dry_run is True:
@@ -534,11 +534,15 @@ class CalibreTools:
             os.makedirs(cover_full_path)
         n = 0
         errs = 0
+
+        if notes.notes_books_folder != output_path:
+            self.log.error(f"Notes books folder {notes.notes_books_folder} does not match output_path {output_path}")
+            return 0, 1
+
         existing_notes = []
-        for root, dirs, files in os.walk(output_path):
-            for file in files:
-                if file.endswith(".md"):
-                    existing_notes.append(os.path.join(root, file))
+        for note_filename in notes.notes:
+            if note_filename.startswith(output_path):
+                existing_notes.append(note_filename)
 
         for entry in self.lib_entries:
             mandatory_fields = [
@@ -669,28 +673,17 @@ class CalibreTools:
             #     md += f"\nTags: {foot_tags[:-2]}\n"
             if len(foot_authors) > 3:
                 md += f"\nAuthors: {foot_authors}\n"
-            if md_filename in existing_notes:
-                # remove from existing_notes
-                existing_notes.remove(md_filename)
-            if os.path.exists(md_filename):
-                if update_existing is True:
-                    with open(md_filename, "r") as f:
-                        existing_md = f.read()
-                    if existing_md == md:
-                        self.log.info(f"File {md_filename} already exists and is unchanged")
-                    else:
-                        diffs = self.notes_differ(existing_md, md)
-                        if diffs > 0:
-                            self.log.warning(
-                                f"File {md_filename} already exists but is changed, {diffs} differences found, UPDATE NOT IMPLEMENTED"
-                            )
-                            errs += 1
-                        else:
-                            self.log.info("File {md_filename} has been updated, no significant change")
-                    continue
+
+            if entry['uuid'] in notes.uuid_to_note_filename:
+                if md_filename in existing_notes:
+                    # remove from existing_notes
+                    existing_notes.remove(md_filename)
                 else:
-                    continue
-            else:
+                    old_filename = notes.uuid_to_note_filename[entry['uuid']]
+                    self.log.warning(f"Note {old_filename} was renamed to {md_filename}")
+                    if dry_run is False:
+                        notes.rename_note(old_filename, md_filename, update_links=True, dry_run=dry_run)
+            if os.path.exists(md_filename) is False:
                 if dry_run is False:
                     with open(md_filename, "w") as f:
                         f.write(md)
