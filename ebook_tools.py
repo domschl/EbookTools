@@ -109,7 +109,6 @@ if __name__ == "__main__":
             notes,
             notes_books_path,
             dry_run=dry_run,
-            update_existing=False,
             delete=delete,
         )
         logger.info(f"Exported {n} books to {notes_books_path}")

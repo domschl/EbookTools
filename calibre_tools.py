@@ -521,7 +521,7 @@ class CalibreTools:
         return link
 
     def export_calibre_metadata_to_markdown(
-        self, notes, output_path, max_entries=None, cover_rel_path=None, update_existing=False, dry_run=False, delete=False
+        self, notes, output_path, max_entries=None, cover_rel_path=None, dry_run=False, delete=False
     ):
         output_path = os.path.expanduser(output_path)
         if not os.path.exists(output_path) and not dry_run is True:
