@@ -11,7 +11,7 @@ import unicodedata
 from PIL import Image
 from bs4 import BeautifulSoup  ## pip install beautifulsoup4
 
-from ebook_utils import sanitized_md_filename
+from ebook_utils import sanitized_md_filename, progress_bar_string
 from calibre_tools_localization import calibre_prefixes
 
 
@@ -75,13 +75,32 @@ class CalibreTools:
         s = s.strip()
         return s
 
-    def load_calibre_library_metadata(self, max_entries=None):
+    def load_calibre_library_metadata(self, max_entries=None, progress=False):
         self.lib_entries = []
+        
+        if progress is True:
+            total_entries = 0
+            for root, dirs, files in os.walk(self.calibre_path):
+                if ".caltrash" in root or ".calnotes" in root:
+                    continue
+                for file in files:
+                    if file == "metadata.opf":
+                        total_entries += 1
+            if total_entries == 0:
+                self.log.error(f"No metadata.opf files found in Calibre library")
+                progress = False
+
+        current_entry = 0
         for root, dirs, files in os.walk(self.calibre_path):
             if ".caltrash" in root or ".calnotes" in root:
                 continue
             for file in files:
                 if file == "metadata.opf":
+
+                    if progress is True:
+                        current_entry += 1
+                        progress_bar = progress_bar_string(current_entry, total_entries)
+                        print(f"{progress_bar} {current_entry}/{total_entries}", end="\r")
 
                     title = None
                     title_sort = None
@@ -539,10 +558,18 @@ class CalibreTools:
             self.log.error(f"Notes books folder {notes.notes_books_folder} does not match output_path {output_path}")
             return 0, 1
 
-        existing_notes = []
+        existing_notes_filenames = {}
+        existing_notes_uuids = {}
         for note_filename in notes.notes:
             if note_filename.startswith(output_path):
-                existing_notes.append(note_filename)
+                uuid = None
+                if 'metadata' in notes.notes[note_filename] and 'uuid' in notes.notes[note_filename]['metadata']:
+                    uuid = notes.notes[note_filename]['metadata']['uuid'] 
+                if uuid is not None:
+                    existing_notes_filenames[note_filename] = uuid
+                    existing_notes_uuids[uuid] = note_filename
+                else:
+                    self.log.error(f"Note {note_filename} does not have a UUID, ignoring")
 
         for entry in self.lib_entries:
             mandatory_fields = [
@@ -666,7 +693,7 @@ class CalibreTools:
                              ("  ", " "), ("  ", " ")]
                 for token in md_tokens:
                     html_text = html_text.replace(token[0], token[1])
-                text = BeautifulSoup(html_text, "html.parser").get_text()
+                text = BeautifulSoup(html_text, features="lxml").get_text() #   "html.parser").get_text()
                 cmt = text.replace("\n", "\n> ")
                 md += f"> {cmt}\n"
             # if len(foot_tags) > 3:
@@ -674,16 +701,29 @@ class CalibreTools:
             if len(foot_authors) > 3:
                 md += f"\nAuthors: {foot_authors}\n"
 
+            uuid_exists = False
             if entry['uuid'] in notes.uuid_to_note_filename:
-                if md_filename in existing_notes:
-                    # remove from existing_notes
-                    existing_notes.remove(md_filename)
-                else:
+                uuid_exists = True
+                if entry['uuid'] in existing_notes_uuids:
                     old_filename = notes.uuid_to_note_filename[entry['uuid']]
-                    self.log.warning(f"Note {old_filename} was renamed to {md_filename}")
-                    if dry_run is False:
+                    if old_filename != md_filename:
+                        self.log.warning(f"Note {old_filename} was renamed to {md_filename}")
                         notes.rename_note(old_filename, md_filename, update_links=True, dry_run=dry_run)
-            if os.path.exists(md_filename) is False:
+                        if old_filename in existing_notes_filenames:
+                            del existing_notes_filenames[old_filename]
+                        if entry['uuid'] in existing_notes_uuids:
+                            del existing_notes_uuids[entry['uuid']]
+                    else:
+                        # remove from existing_notes
+                        if md_filename in existing_notes_filenames:
+                            del existing_notes_filenames[md_filename]
+                        if entry['uuid'] in existing_notes_uuids:
+                            old_filename = existing_notes_uuids[entry['uuid']]
+                            del existing_notes_uuids[entry['uuid']]
+                            if old_filename != md_filename:
+                                self.log.error(f"Note {old_filename} was renamed to {md_filename}, but not updated in existing_notes")
+                                del existing_notes_filenames[old_filename]
+            if os.path.exists(md_filename) is False and uuid_exists is False:
                 if dry_run is False:
                     with open(md_filename, "w") as f:
                         f.write(md)
@@ -692,9 +732,9 @@ class CalibreTools:
                 n += 1
                 if n == max_entries:
                     break
-        if len(existing_notes)>0:
-            self.log.warning(f"Found {len(existing_notes)} existing notes that are not in the library")
-            for note in existing_notes:
+        if len(existing_notes_filenames)>0:
+            self.log.warning(f"Found {len(existing_notes_filenames)} existing notes that are not in the library")
+            for note in existing_notes_filenames:
                 if delete is True:
                     if dry_run is False:
                         os.remove(note)

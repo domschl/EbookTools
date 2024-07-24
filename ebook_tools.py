@@ -90,20 +90,28 @@ if __name__ == "__main__":
 
     if do_export is True or do_notes is True:
         calibre = CalibreTools(calibre_path=calibre_path)
-        logger.info(f"Calibre Library {calibre.calibre_path}, loading metadata")
-        calibre.load_calibre_library_metadata()
+        logger.info(
+            f"Calibre Library {calibre.calibre_path}, loading and parsing XML metadata"
+        )
+        calibre.load_calibre_library_metadata(progress=True)
         logger.info("Calibre Library loaded")
     if do_export is True:
         logger.info(f"Calibre Library {calibre.calibre_path}, copying books")
         new_books, upd_books, debris = calibre.export_calibre_books(
-            meta_path, format=export_formats, dry_run=dry_run, delete=delete
+            meta_path,
+            format=export_formats,
+            dry_run=dry_run,
+            delete=delete,
+            progress=True,
         )
         logger.info(
             f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"
         )
     if do_notes is True:
         logger.info(f"Loading notes from {notes_path}")
-        notes = MdTools(notes_folder=notes_path, notes_books_folder=notes_books_path)
+        notes = MdTools(
+            notes_folder=notes_path, notes_books_folder=notes_books_path, progress=True
+        )
         logger.info(f"Exporting metadata to {notes_books_path}")
         n, errs = calibre.export_calibre_metadata_to_markdown(
             notes,

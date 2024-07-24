@@ -4,7 +4,7 @@ import copy
 import yaml
 import re
 
-from ebook_utils import sanitized_md_filename
+from ebook_utils import sanitized_md_filename, progress_bar_string
 
 
 class MdTools:
@@ -19,6 +19,7 @@ class MdTools:
         notes_books_folder=None,
         notes_annotations_folder=None,
         skip_dirs=[".obsidian"],
+        progress=False,
     ):
         self.log = logging.getLogger("MdTools")
         self.notes_folder = notes_folder
@@ -37,7 +38,8 @@ class MdTools:
         if not os.path.exists(self.notes_annotations_folder):
             os.makedirs(self.notes_annotations_folder)
             self.log.info(f"Created folder {self.notes_annotations_folder}")
-        self.read_notes(skip_dirs=skip_dirs)
+        self.progress = progress
+        self.read_notes(skip_dirs=skip_dirs, progress=progress)
 
     def _repairYaml(self, txt):
         lines = txt.split("\n")
@@ -130,6 +132,9 @@ class MdTools:
                 else:
                     frontmatter.append(line)
             elif state == 2:
+                if len(content) == 0:
+                    if line == "":
+                        continue
                 content.append(line)
         frontmatter = "\n".join(frontmatter)
         content = "\n".join(content)
@@ -214,11 +219,24 @@ class MdTools:
             self.note_file_title_to_filename[note_file_title] = note_filename
             self.notes[note_filename] = note
 
-    def read_notes(self, skip_dirs=[".obsidian"]):
+    def read_notes(self, skip_dirs=[".obsidian"], progress=False):
         self.notes = {}
         self.uuid_to_note_filename = {}
         self.note_file_title_to_filename = {}
 
+        if progress is True:
+            notes_count = 0
+            for root, dirs, files in os.walk(self.notes_folder):
+                for skip_dir in skip_dirs:
+                    if skip_dir in dirs:
+                        dirs.remove(skip_dir)
+                for file in files:
+                    if file.endswith(".md"):
+                        notes_count += 1
+            if notes_count == 0:
+                self.log.info(f"No markdown notes found")
+                return
+            notes_progress = 0
         for root, dirs, files in os.walk(self.notes_folder):
             for skip_dir in skip_dirs:
                 if skip_dir in dirs:
@@ -226,6 +244,16 @@ class MdTools:
 
             for file in files:
                 if file.endswith(".md"):
+
+                    if progress is True:
+                        notes_progress += 1
+                        progress_str = progress_bar_string(
+                            notes_progress, notes_count, bar_length=20
+                        )
+                        print(
+                            f"\r{progress_str} {notes_progress}/{notes_count}", end=""
+                        )
+
                     note_filename = os.path.join(root, file)
                     note = self.read_md_file(note_filename)
                     if note is not None:
@@ -273,6 +301,7 @@ class MdTools:
                 if "content" in note:
                     content = note["content"]
                     new_content = []
+                    note_updated = False
                     for line in content.split("\n"):
                         test_line = line.lower()
                         ind1 = test_line.find("[[")
@@ -289,10 +318,14 @@ class MdTools:
                                     ind2 = ind2a
                                 link = test_line[ind1 + 2 : ind2].strip()
                                 if link == old_link:
+                                    self.log.info(
+                                        f"Found link {link} in {note_filename}"
+                                    )
                                     new_line = (
                                         line[:ind1] + "[[" + new_link + line[ind2:]
                                     )
                                     new_content.append(new_line)
+                                    note_updated = True
                                     if dry_run is False:
                                         self.log.info(
                                             f"Changed link {link} to {new_link} in {note_filename}:"
@@ -309,17 +342,20 @@ class MdTools:
                                 ind1 = test_line.find("[[", ind2)
                         else:
                             new_content.append(line)
-                    note["content"] = "\n".join(new_content)
-                    self.note_cache_links(note)
-                    note_reassembled = self.assemble_markdown(
-                        note["metadata"], note["content"]
-                    )
-                    if dry_run is False:
-                        with open(note_filename, "w") as f:
-                            f.write(note_reassembled)
-                        self.log.info(f"Note {note_filename} updated")
-                    else:
-                        self.log.info(f"Dry run: Note {note_filename} would be updated")
+                    if note_updated is True:
+                        note["content"] = "\n".join(new_content)
+                        self.note_cache_links(note)
+                        note_reassembled = self.assemble_markdown(
+                            note["metadata"], note["content"]
+                        )
+                        if dry_run is False:
+                            with open(note_filename, "w") as f:
+                                f.write(note_reassembled)
+                            self.log.info(f"Note {note_filename} updated")
+                        else:
+                            self.log.info(
+                                f"Dry run: Note {note_filename} would be updated"
+                            )
 
     def md_filename(self, name):
         name = sanitized_md_filename(name)
