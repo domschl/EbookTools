@@ -324,7 +324,9 @@ class MdTools:
                                     new_line = (
                                         line[:ind1] + "[[" + new_link + line[ind2:]
                                     )
-                                    new_content.append(new_line)
+                                    line = new_line
+                                    test_line = line.lower()
+                                    ind2 = ind1 + len(new_link) + 4
                                     note_updated = True
                                     if dry_run is False:
                                         self.log.info(
@@ -332,14 +334,12 @@ class MdTools:
                                         )
                                         self.log.info(f"  {line} -> {new_line}")
                                     else:
-                                        new_content.append(line)
                                         self.log.info(
                                             f"WOULD Change link {link} to {new_link} in {note_filename}:"
                                         )
                                         self.log.info(f"  {line} -> {new_line}")
-                                else:
-                                    new_content.append(line)
                                 ind1 = test_line.find("[[", ind2)
+                            new_content.append(line)
                         else:
                             new_content.append(line)
                     if note_updated is True:
