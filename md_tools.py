@@ -110,7 +110,7 @@ class MdTools:
                 lines.insert(header_end + 1, "")
                 changed += 1
         if changed > 0:
-            txt = "\n".join(lines)
+            txt = "\n".join(lines) + "\n"
         return txt, changed
 
     def parse_frontmatter(self, txt):
@@ -136,8 +136,8 @@ class MdTools:
                     if line == "":
                         continue
                 content.append(line)
-        frontmatter = "\n".join(frontmatter)
-        content = "\n".join(content)
+        frontmatter = "\n".join(frontmatter)  # + "\n"
+        content = "\n".join(content) + "\n"
         try:
             metadata = yaml.safe_load(frontmatter)
             if metadata is None:
@@ -290,7 +290,7 @@ class MdTools:
             self.log.info(
                 f"Dry run: Note {current_filename} would be renamed to {new_filename}"
             )
-
+        content_updates = 0
         if update_links is True:
             # Update links of format [[old_link]] or [[old_link|alias]] using regex links are case-insensitive
             old_link = os.path.basename(current_filename)[:-3].lower()
@@ -343,7 +343,8 @@ class MdTools:
                         else:
                             new_content.append(line)
                     if note_updated is True:
-                        note["content"] = "\n".join(new_content)
+                        content_updates += 1
+                        note["content"] = "\n".join(new_content) + "\n"
                         self.note_cache_links(note)
                         note_reassembled = self.assemble_markdown(
                             note["metadata"], note["content"]
@@ -356,6 +357,7 @@ class MdTools:
                             self.log.info(
                                 f"Dry run: Note {note_filename} would be updated"
                             )
+        return content_updates
 
     def md_filename(self, name):
         name = sanitized_md_filename(name)
@@ -434,7 +436,7 @@ class MdTools:
         new_note,
         check_frontmatter=True,
         check_content=True,
-        verbose=False,
+        verbose=True,
     ):
         old_note, changed1 = self._repairYaml(old_note)
         # if changed1 > 0:
@@ -444,7 +446,6 @@ class MdTools:
 
         diffs = 0
         if check_frontmatter is True:
-
             key_set = set(old_fm.keys()).union(set(new_fm.keys()))
             for key in key_set:
                 if key not in old_fm:
@@ -463,8 +464,13 @@ class MdTools:
                     diffs += 1
                     continue
         if check_content is True:
-            if old_content != new_content:
+            if old_content.strip() != new_content.strip():
                 if verbose is True:
-                    print("Content differs")
+                    print(
+                        f"Content differs, length: {len(old_content)} vs {len(new_content)}"
+                    )
                 diffs += 1
+        if verbose is True:
+            if diffs > 0:
+                print(f"Found {diffs} differences\n")
         return diffs

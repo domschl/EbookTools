@@ -113,13 +113,15 @@ if __name__ == "__main__":
             notes_folder=notes_path, notes_books_folder=notes_books_path, progress=True
         )
         logger.info(f"Exporting metadata to {notes_books_path}")
-        n, errs = calibre.export_calibre_metadata_to_markdown(
+        n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
             notes,
             notes_books_path,
             dry_run=dry_run,
             delete=delete,
         )
-        logger.info(f"Exported {n} books to {notes_books_path}")
+        logger.info(
+            f"Exported {n} books to {notes_books_path}, content of {content_updates} books updated"
+        )
     if do_kindle is True:
         kindle = KindleTools()
         clippings = []

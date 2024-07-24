@@ -553,10 +553,11 @@ class CalibreTools:
             os.makedirs(cover_full_path)
         n = 0
         errs = 0
+        content_updates = 0
 
         if notes.notes_books_folder != output_path:
             self.log.error(f"Notes books folder {notes.notes_books_folder} does not match output_path {output_path}")
-            return 0, 1
+            return 0, 1, content_updates
 
         existing_notes_filenames = {}
         existing_notes_uuids = {}
@@ -708,7 +709,7 @@ class CalibreTools:
                     old_filename = notes.uuid_to_note_filename[entry['uuid']]
                     if old_filename != md_filename:
                         self.log.warning(f"Note {old_filename} was renamed to {md_filename}")
-                        notes.rename_note(old_filename, md_filename, update_links=True, dry_run=dry_run)
+                        content_updates += notes.rename_note(old_filename, md_filename, update_links=True, dry_run=dry_run)
                         if old_filename in existing_notes_filenames:
                             del existing_notes_filenames[old_filename]
                         if entry['uuid'] in existing_notes_uuids:
@@ -741,4 +742,4 @@ class CalibreTools:
                         self.log.warning(f"Deleted {note}")
                     else:
                         self.log.warning(f"Would delete {note}")
-        return n, errs
+        return n, errs, content_updates
