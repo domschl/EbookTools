@@ -102,7 +102,6 @@ if __name__ == "__main__":
             format=export_formats,
             dry_run=dry_run,
             delete=delete,
-            progress=True,
         )
         logger.info(
             f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"
