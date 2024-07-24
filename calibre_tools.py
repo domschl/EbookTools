@@ -11,7 +11,7 @@ import unicodedata
 from PIL import Image
 from bs4 import BeautifulSoup  ## pip install beautifulsoup4
 
-# Disable MarkupResemblesLocatorWarning
+# Disable MarkupResemblesLocatorWarning 
 from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
 import warnings
 warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
