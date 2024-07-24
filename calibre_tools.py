@@ -11,6 +11,11 @@ import unicodedata
 from PIL import Image
 from bs4 import BeautifulSoup  ## pip install beautifulsoup4
 
+# Disable MarkupResemblesLocatorWarning
+from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
+import warnings
+warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
+
 from ebook_utils import sanitized_md_filename, progress_bar_string
 from calibre_tools_localization import calibre_prefixes
 
