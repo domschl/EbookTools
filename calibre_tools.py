@@ -389,7 +389,7 @@ class CalibreTools:
                     koreader_metadata[title]["metadata"].append({'pdf': {}})
                 continue
             for file in files:
-                if file == "repo_state.json":
+                if file in ["repo_state.json", "annotations.json"]:
                     continue
                 filename = os.path.join(root, file)
                 # ignore dot files
@@ -460,27 +460,46 @@ class CalibreTools:
             self.log.warning("Found files in target that are not in library:")
             updated = True
             for file in target_existing:
-                if delete is True and dry_run is False:
-                    os.remove(file)
-                    self.log.warning(f"Deleted {file}")
-                    # Check, if folder is empty, remove it
-                    folder = os.path.dirname(file)
-                else:
-                    self.log.warning(f"Would delete {file}")
+                if delete is True:  
+                    if dry_run is False:
+                        os.remove(file)
+                        self.log.warning(f"Deleted {file}")
+                    else:
+                        self.log.warning(f"Would delete {file}")
+        # check if koreader metadata folders (.sdr) without corresponding library entry exist
+        valid_books = []
+        sdr_debris = []
+        for entry in self.lib_entries:
+            valid_books.append(entry['short_title'])
+        for title in koreader_metadata:
+            if title not in valid_books:
+                sdr_debris.append(title)
+        if len(sdr_debris) > 0:
+            updated = True
+            for title in sdr_debris:
+                if delete is True:
+                    if dry_run is False:
+                        shutil.rmtree(koreader_metadata[title]["folder"])
+                        self.log.warning(f"Deleted obsolete metadata folder {koreader_metadata[title]['folder']}")
+                    else:
+                        self.log.warning(f"Would delete obsolete metadata folder {koreader_metadata[title]['folder']}")
+        else:
+            self.log.info("No Koreader metadata folders without corresponding library entry found")
         # Enumerate all folders, remove empty folders
         debris = len(target_existing)
         for root, dirs, files in os.walk(target, topdown=False):
             if len(files) == 0 and len(dirs) == 0:
                 debris += 1
-                if delete is True and dry_run is False:
-                    # get folder name without path:
-                    folder = os.path.basename(root)
-                    if folder.startswith("."):  # don't kill .dot folders!
-                        continue
-                    os.rmdir(root)
-                    self.log.warning(f"Removed empty folder {root}")
-                else:
-                    self.log.warning(f"Would remove empty folder {root}")
+                if delete is True:
+                    if dry_run is False:
+                        # get folder name without path:
+                        folder = os.path.basename(root)
+                        if folder.startswith("."):  # don't kill .dot folders!
+                            continue
+                        os.rmdir(root)
+                        self.log.warning(f"Removed empty folder {root}")
+                    else:
+                        self.log.warning(f"Would remove empty folder {root}")
         update_state = False
         if updated:
             self.log.info(
@@ -496,7 +515,7 @@ class CalibreTools:
             self.log.info("No updates and no new files found, nothing to do.")
         if update_state is True or self.sequence_number == 0:
             self.sequence_number = self.save_state(target, self.lib_entries, self.sequence_number)
-            self.log.info(f"Saved state to {target}/repo_state.json, sequence number: {self.sequence_number}    ")
+            self.log.info(f"Saved state to {target}/repo_state.json, sequence number: {self.sequence_number}")
 
         return new_docs, upd_docs, debris
 
