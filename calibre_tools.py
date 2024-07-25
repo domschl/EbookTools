@@ -147,7 +147,7 @@ class CalibreTools:
                     # creator = metadata.find("dc:creator", ns)
                     # creators = creator.text.split(", ") if creator is not None else []
                     # Get all authors from 'role': <dc:creator opf:file-as="Berlitz, Charles &amp; Moore, William L." opf:role="aut">Charles Berlitz</dc:creator>
-# id.attrib["{http://www.idpf.org/2007/opf}scheme"]
+                    # id.attrib["{http://www.idpf.org/2007/opf}scheme"]
                     creators = []
                     for creator in metadata.findall("dc:creator", ns):
                         if "{http://www.idpf.org/2007/opf}role" in creator.attrib:
@@ -363,11 +363,32 @@ class CalibreTools:
             os.makedirs(target)
         # Enumerate all files in target:
         target_existing = []
+        koreader_metadata = {}
         for root, dirs, files in os.walk(target):
+            # if root is a dot dir, ignore
+            if os.path.basename(root).startswith("."):
+                self.log.info(f"Ignoring dot folder {root}")
+                continue
+            if os.path.basename(root).endswith(".sdr"):
+                self.log.info(f"Skipping koreader metadata folder {root}")
+                title = os.path.basename(root)[:-4]
+                koreader_metadata[title] = {
+                    "folder": root,
+                    "formats": [],
+                    "metadata": [],
+                }
+                epub_meta = os.path.join(root, "metadata.epub.lua")
+                # XXX parse metadata for highlights, notes
+                if os.path.exists(epub_meta):
+                    koreader_metadata[title]["formats"].append("epub")
+                    koreader_metadata[title]["metadata"].append({'epub': {}})
+                pdf_meta = os.path.join(root, "metadata.pdf.lua")
+                # XXX parse metadata for highlights, notes
+                if os.path.exists(pdf_meta):
+                    koreader_metadata[title]["formats"].append("pdf")
+                    koreader_metadata[title]["metadata"].append({'pdf': {}})
+                continue
             for file in files:
-                # if root is a dot dir, ignore
-                if os.path.basename(root).startswith("."):
-                    continue
                 if file == "repo_state.json":
                     continue
                 filename = os.path.join(root, file)
