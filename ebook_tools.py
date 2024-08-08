@@ -6,6 +6,8 @@ import json
 from calibre_tools import CalibreTools
 from kindle_tools import KindleTools
 from md_tools import MdTools
+from indra_tools import IndraTools
+
 
 if __name__ == "__main__":
     # Init logging
@@ -17,6 +19,7 @@ if __name__ == "__main__":
     do_export = False
     do_notes = False
     do_kindle = False
+    do_indra = False
 
     args = sys.argv[1:]
     if "-E" in args:
@@ -33,6 +36,9 @@ if __name__ == "__main__":
         print("  export: export books from Calibre Library to MetaLibrary folder")
         print("  notes:  export metadata to Notes as Markdown files")
         print("  kindle: export Kindle clippings to Notes as Markdown files")
+        print(
+            "  indra: search notes for Indra events from tables with first column 'Date'"
+        )
         print("  -d: dry run, do not copy or delete files")
         print("  -E: execute, this can DELETE files, be careful, test first with -d")
         print("  -x: delete files that are debris, DANGER, test first with -d")
@@ -43,6 +49,9 @@ if __name__ == "__main__":
     if "notes" in args:
         args.remove("notes")
         do_notes = True
+    if "indra" in args:
+        args.remove("indra")
+        do_indra = True
     if "kindle" in args:
         args.remove("kindle")
         do_kindle = True
@@ -124,6 +133,18 @@ if __name__ == "__main__":
         logger.info(
             f"Loaded {len(notes.notes)} notes with {table_cnt} tables, {metadata_cnt} metadata tables"
         )
+        if do_indra is True:
+            indra = IndraTools()
+            event_cnt = 0
+            for note_name in notes.notes:
+                note = notes.notes[note_name]
+                for table in note["tables"]:
+                    event_cnt += indra.add_events_from_table(table, note)
+            logger.info(
+                f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes"
+            )
+            # for event in indra.events:
+            #    print(event)
         logger.info(f"Exporting metadata to {notes_books_path}")
         n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
             notes,

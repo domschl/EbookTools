@@ -183,7 +183,7 @@ class MdTools:
         tables = []
         lines = content.split("\n")
         table_state = 0
-        table_data = []
+        rows = []
         columns = []
         metadata = {}
         for line in lines:
@@ -225,29 +225,29 @@ class MdTools:
                         if c not in ["|", " ", "-", ":", ">", "<"]:
                             table_state = 0
                             columns = []
-                            table_data = []
+                            rows = []
                             metadata = {}
                             continue
                     table_state = 2
                 else:
                     columns = []
-                    table_data = []
+                    rows = []
                     metadata = {}
                     table_state = 0
             elif table_state == 2:
                 if line.startswith("|"):
-                    table_data.append([col.strip() for col in line[1:].split("|")][:-1])
+                    rows.append([col.strip() for col in line[1:].split("|")][:-1])
                 else:
                     table_state = 0
-                    if len(table_data) > 0:
+                    if len(rows) > 0:
                         tables.append(
                             {
                                 "columns": columns,
-                                "data": table_data,
+                                "data": rows,
                                 "metadata": metadata,
                             }
                         )
-                    table_data = []
+                    rows = []
                     columns = []
                     metadata = {}
             elif table_state == 5:
