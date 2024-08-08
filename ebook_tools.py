@@ -111,6 +111,19 @@ if __name__ == "__main__":
         notes = MdTools(
             notes_folder=notes_path, notes_books_folder=notes_books_path, progress=True
         )
+        table_cnt = 0
+        metadata_cnt = 0
+        for note_name in notes.notes:
+            note = notes.notes[note_name]
+            table_cnt += len(note["tables"])
+            for table in note["tables"]:
+                if "metadata" in table and table["metadata"] != {}:
+                    print(table["columns"])
+                    print(table["metadata"])
+                    metadata_cnt += 1
+        logger.info(
+            f"Loaded {len(notes.notes)} notes with {table_cnt} tables, {metadata_cnt} metadata tables"
+        )
         logger.info(f"Exporting metadata to {notes_books_path}")
         n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
             notes,

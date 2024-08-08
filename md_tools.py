@@ -176,6 +176,85 @@ class MdTools:
             note["links"] = links
         return links
 
+    # Look for tables in markdown content. The last comment before the table can contain metadata
+    # in form: `<!-- key1: value1; key2: value2; ... -->`
+    # Returns a dict with tables, each table is a dict with columns and data and metadata
+    def parse_tables(self, content):
+        tables = []
+        lines = content.split("\n")
+        table_state = 0
+        table_data = []
+        columns = []
+        metadata = {}
+        for line in lines:
+            line = line.strip()
+            # XXX sloppy parser, fails on ;: at wrong places!
+            if "<!--" in line:
+                metadata = {}
+                try:
+                    meta = line.split("<!--")[1].split("-->")[0]
+                except:
+                    meta = ""
+                if len(meta) > 0:
+                    metas = [mt.strip() for mt in meta.split(";")]
+                    for mt in metas:
+                        key = None
+                        value = None
+                        if ":" in mt:
+                            try:
+                                key, value = mt.split(":", 1)
+                                metadata[key.strip()] = value.strip()
+                            except:
+                                pass
+
+            if table_state == 0:
+                if line.startswith("$$"):  # start of latex block
+                    table_state = 5
+                    continue
+                if line.startswith("|"):
+                    if not line.endswith("|"):
+                        print(
+                            f"Table line does not end with '|', >{line}<, malformed tabled! Ignoring data."
+                        )
+                        return tables
+                    table_state = 1
+                    columns = [col.strip() for col in line[1:].split("|")][:-1]
+            elif table_state == 1:
+                if line.startswith("|"):
+                    for c in line:
+                        if c not in ["|", " ", "-", ":", ">", "<"]:
+                            table_state = 0
+                            columns = []
+                            table_data = []
+                            metadata = {}
+                            continue
+                    table_state = 2
+                else:
+                    columns = []
+                    table_data = []
+                    metadata = {}
+                    table_state = 0
+            elif table_state == 2:
+                if line.startswith("|"):
+                    table_data.append([col.strip() for col in line[1:].split("|")][:-1])
+                else:
+                    table_state = 0
+                    if len(table_data) > 0:
+                        tables.append(
+                            {
+                                "columns": columns,
+                                "data": table_data,
+                                "metadata": metadata,
+                            }
+                        )
+                    table_data = []
+                    columns = []
+                    metadata = {}
+            elif table_state == 5:
+                if line.startswith("$$"):  # end of latex block
+                    table_state = 0
+        return tables
+
     def read_md_file(self, filename, verbose=False):
         with open(filename, "r") as f:
             note_raw = f.read()
@@ -192,6 +271,7 @@ class MdTools:
             note = {}
             note["metadata_changes"] = changed
             note["metadata"], note["content"] = self.parse_frontmatter(note_text)
+            note["tables"] = self.parse_tables(note["content"])
             self.note_cache_links(note)
             # Reassemble the note  XXX can be removed:
             note_reassembled = self.assemble_markdown(note["metadata"], note["content"])
