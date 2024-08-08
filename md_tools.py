@@ -243,7 +243,7 @@ class MdTools:
                         tables.append(
                             {
                                 "columns": columns,
-                                "data": rows,
+                                "rows": rows,
                                 "metadata": metadata,
                             }
                         )

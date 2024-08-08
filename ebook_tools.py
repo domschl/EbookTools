@@ -16,6 +16,7 @@ if __name__ == "__main__":
 
     dry_run = True
     delete = False
+    interactive = True
     do_export = False
     do_notes = False
     do_kindle = False
@@ -28,6 +29,9 @@ if __name__ == "__main__":
     if "-d" in args:
         dry_run = True
         args.remove("-d")
+    if "-np" in args:
+        interactive = False
+        args.remove("-np")
     if "-x" in args:
         delete = True
         args.remove("-x")
@@ -42,6 +46,7 @@ if __name__ == "__main__":
         print("  -d: dry run, do not copy or delete files")
         print("  -E: execute, this can DELETE files, be careful, test first with -d")
         print("  -x: delete files that are debris, DANGER, test first with -d")
+        print("  -np: non-interactive mode, do not show progress bars")
         exit(0)
     if "export" in args:
         args.remove("export")
@@ -55,7 +60,12 @@ if __name__ == "__main__":
     if "kindle" in args:
         args.remove("kindle")
         do_kindle = True
-    if do_export is False and do_notes is False and do_kindle is False:
+    if (
+        do_export is False
+        and do_notes is False
+        and do_kindle is False
+        and do_indra is False
+    ):
         logger.error("No action specified, exiting, use -h for help")
         exit(1)
 
@@ -102,7 +112,7 @@ if __name__ == "__main__":
         logger.info(
             f"Calibre Library {calibre.calibre_path}, loading and parsing XML metadata"
         )
-        calibre.load_calibre_library_metadata(progress=True)
+        calibre.load_calibre_library_metadata(progress=interactive)
         logger.info("Calibre Library loaded")
     if do_export is True:
         logger.info(f"Calibre Library {calibre.calibre_path}, copying books")
@@ -115,10 +125,12 @@ if __name__ == "__main__":
         logger.info(
             f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"
         )
-    if do_notes is True:
+    if do_notes is True or do_indra is True:
         logger.info(f"Loading notes from {notes_path}")
         notes = MdTools(
-            notes_folder=notes_path, notes_books_folder=notes_books_path, progress=True
+            notes_folder=notes_path,
+            notes_books_folder=notes_books_path,
+            progress=interactive,
         )
         table_cnt = 0
         metadata_cnt = 0
@@ -139,22 +151,23 @@ if __name__ == "__main__":
             for note_name in notes.notes:
                 note = notes.notes[note_name]
                 for table in note["tables"]:
-                    event_cnt += indra.add_events_from_table(table, note)
+                    new_evs = indra.add_events_from_table(table, note)
+                    event_cnt += new_evs
             logger.info(
                 f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes"
             )
-            # for event in indra.events:
-            #    print(event)
-        logger.info(f"Exporting metadata to {notes_books_path}")
-        n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
-            notes,
-            notes_books_path,
-            dry_run=dry_run,
-            delete=delete,
-        )
-        logger.info(
-            f"Exported {n} books to {notes_books_path}, content of {content_updates} books updated"
-        )
+            indra.print_event()
+        if do_notes is True:
+            logger.info(f"Exporting metadata to {notes_books_path}")
+            n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
+                notes,
+                notes_books_path,
+                dry_run=dry_run,
+                delete=delete,
+            )
+            logger.info(
+                f"Exported {n} books to {notes_books_path}, content of {content_updates} books updated"
+            )
     if do_kindle is True:
         kindle = KindleTools()
         clippings = []
