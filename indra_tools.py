@@ -38,6 +38,15 @@ class IndraTools:
             raw_date = row[0]
             try:
                 jd_date = IndraTime.string_time_2_julian(raw_date)
+                # print(jd_date)
+                for date_part in jd_date:
+                    if date_part is None:
+                        self.log.warning(
+                            f"Table {table['columns']}: Row {row} has invalid date {raw_date}"
+                        )
+                        jd_date = None
+                if jd_date is None:
+                    continue
             except ValueError:
                 self.log.warning(
                     f"Table {table['columns']}: Row {row} has invalid date {raw_date}"
