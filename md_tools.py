@@ -179,6 +179,7 @@ class MdTools:
     # Look for tables in markdown content. The last comment before the table can contain metadata
     # in form: `<!-- key1: value1; key2: value2; ... -->`
     # Returns a dict with tables, each table is a dict with columns and data and metadata
+    ### XXX Frickel-Parser!
     def parse_tables(self, content, filepath, note_uuid=None):
         tables = []
         lines = content.split("\n")
