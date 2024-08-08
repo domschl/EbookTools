@@ -17,7 +17,7 @@ class IndraTools:
             return event_cnt
         if len(table["columns"]) < 2:
             self.log.warning(
-                f"Table {table['columns']} has less than 2 columns, skipping"
+                f"Table {table['columns']}, {metadata} has less than 2 columns, skipping"
             )
             return event_cnt
         col_nr = len(table["columns"])
@@ -28,12 +28,12 @@ class IndraTools:
                 )
                 return event_cnt
         if table["columns"][0] != "Date":
-            self.log.info(
-                f"Table {table['columns']}: First column is not 'Date', skipping"
-            )
+            # self.log.info(
+            #     f"Table {table['columns']}: First column is not 'Date', skipping"
+            # )
             return event_cnt
-        if "domain" not in metadata:
-            self.log.warning(f"Table {table['columns']}: Metadata has no 'domain' key")
+        # if "domain" not in metadata:
+        #     self.log.warning(f"Table {table['columns']}: Metadata has no 'domain' key")
         for row in table["rows"]:
             raw_date = row[0]
             try:
@@ -64,10 +64,13 @@ class IndraTools:
                 event_text = event_text[:100] + "..."
             for date_part in event[0]:
                 date_points.append(IndraTime.julian_2_string_time(date_part))
+            date = None
             if len(date_points) == 1:
-                self.log.info(f"{date_points[0]}: {event_text}")
+                date = date_points[0]
             elif len(date_points) == 2:
-                self.log.info(f"{date_points[0]} - {date_points[1]}: {event_text}")
+                date = f"{date_points[0]} - {date_points[1]}"
             else:
                 self.log.warning(f"Invalid date range: {date_points}: {event_text}")
+            if date is not None:
+                print(f"| {date:24s} | {event_text}")
         return

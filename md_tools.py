@@ -179,7 +179,7 @@ class MdTools:
     # Look for tables in markdown content. The last comment before the table can contain metadata
     # in form: `<!-- key1: value1; key2: value2; ... -->`
     # Returns a dict with tables, each table is a dict with columns and data and metadata
-    def parse_tables(self, content):
+    def parse_tables(self, content, filepath, note_uuid=None):
         tables = []
         lines = content.split("\n")
         table_state = 0
@@ -208,6 +208,9 @@ class MdTools:
                                 pass
 
             if table_state == 0:
+                if line.startswith("```"):
+                    table_state = 4
+                    continue
                 if line.startswith("$$"):  # start of latex block
                     table_state = 5
                     continue
@@ -239,17 +242,32 @@ class MdTools:
                     rows.append([col.strip() for col in line[1:].split("|")][:-1])
                 else:
                     table_state = 0
-                    if len(rows) > 0:
-                        tables.append(
-                            {
-                                "columns": columns,
-                                "rows": rows,
-                                "metadata": metadata,
-                            }
+                    if filepath.startswith(self.notes_folder):
+                        subfolders = filepath[len(self.notes_folder) + 1 :]
+                    else:
+                        self.log.error(
+                            f"Unexpected filepath {filepath} not in notes folder {self.notes_folder}"
                         )
+                        subfolders = ""
+                    if len(rows) > 0:
+                        if "domain" not in metadata:
+                            if subfolders == "":
+                                subfolders == "books"
+                            metadata["domain"] = f"{subfolders}"
+                        table_entry = {
+                            "columns": columns,
+                            "rows": rows,
+                            "metadata": metadata,
+                        }
+                        if note_uuid is not None:
+                            table_entry["note_uuid"] = note_uuid
+                        tables.append(table_entry)
                     rows = []
                     columns = []
                     metadata = {}
+            elif table_state == 4:
+                if line.startswith("```"):
+                    table_state = 0
             elif table_state == 5:
                 if line.startswith("$$"):  # end of latex block
                     table_state = 0
@@ -271,7 +289,11 @@ class MdTools:
             note = {}
             note["metadata_changes"] = changed
             note["metadata"], note["content"] = self.parse_frontmatter(note_text)
-            note["tables"] = self.parse_tables(note["content"])
+            if "uuid" in note["metadata"]:
+                note_uuid = note["metadata"]["uuid"]
+            else:
+                note_uuid = None
+            note["tables"] = self.parse_tables(note["content"], filename, note_uuid)
             self.note_cache_links(note)
             # Reassemble the note  XXX can be removed:
             note_reassembled = self.assemble_markdown(note["metadata"], note["content"])

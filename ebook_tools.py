@@ -137,11 +137,6 @@ if __name__ == "__main__":
         for note_name in notes.notes:
             note = notes.notes[note_name]
             table_cnt += len(note["tables"])
-            for table in note["tables"]:
-                if "metadata" in table and table["metadata"] != {}:
-                    print(table["columns"])
-                    print(table["metadata"])
-                    metadata_cnt += 1
         logger.info(
             f"Loaded {len(notes.notes)} notes with {table_cnt} tables, {metadata_cnt} metadata tables"
         )
@@ -156,7 +151,7 @@ if __name__ == "__main__":
             logger.info(
                 f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes"
             )
-            indra.print_event()
+            # indra.print_event()
         if do_notes is True:
             logger.info(f"Exporting metadata to {notes_books_path}")
             n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
