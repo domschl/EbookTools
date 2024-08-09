@@ -45,6 +45,14 @@ if __name__ == "__main__":
         nargs="*",
         help="Action: export, notes, kindle, indra",
     )
+    # Add max_notes, number of notes processed, default=0 which is all:
+    parser.add_argument(
+        "-m",
+        "--max-notes",
+        type=int,
+        default=0,
+        help="Max number of notes to process, default=0 which is all",
+    )    
     args = parser.parse_args()
 
     # Set options
@@ -55,6 +63,9 @@ if __name__ == "__main__":
     do_notes = "notes" in args.action
     do_kindle = "kindle" in args.action
     do_indra = "indra" in args.action
+
+    if args.execute is False:
+        dry_run = True
         
     if (
         do_export is False
@@ -127,6 +138,9 @@ if __name__ == "__main__":
             notes_folder=notes_path,
             notes_books_folder=notes_books_path,
             progress=interactive,
+            fix=True,
+            dry_run=dry_run,
+            max_notes = args.max_notes,
         )
         table_cnt = 0
         metadata_cnt = 0
@@ -147,7 +161,7 @@ if __name__ == "__main__":
             logger.info(
                 f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes"
             )
-            indra.print_event()
+            # indra.print_event()
         if do_notes is True:
             logger.info(f"Exporting metadata to {notes_books_path}")
             n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(

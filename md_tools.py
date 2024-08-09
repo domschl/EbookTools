@@ -21,9 +21,14 @@ class MdTools:
         notes_books_folder=None,
         notes_annotations_folder=None,
         skip_dirs=[".obsidian"],
+        fix = False,
         progress=False,
+            dry_run = False,
+            max_notes=0,
     ):
         self.log = logging.getLogger("MdTools")
+        self.dry_run = dry_run
+        self.max_notes = max_notes
         self.notes_folder = notes_folder
         if notes_books_folder is None:
             notes_books_folder = os.path.join(notes_folder, "Books")
@@ -41,7 +46,7 @@ class MdTools:
             os.makedirs(self.notes_annotations_folder)
             self.log.info(f"Created folder {self.notes_annotations_folder}")
         self.progress = progress
-        self.read_notes(skip_dirs=skip_dirs, progress=progress)
+        self.read_notes(skip_dirs=skip_dirs, progress=progress, fix=fix)
 
     def _repairYaml(self, txt):
         lines = txt.split("\n")
@@ -153,7 +158,7 @@ class MdTools:
         if metadata is None or metadata == {}:
             return content
         header = yaml.dump(metadata, default_flow_style=False, indent=2)
-        return f"---\n{header}---\n\n{content}"
+        return f"---\n{header}---\n{content}"
 
     def note_cache_links(self, note):
         links = []
@@ -181,7 +186,7 @@ class MdTools:
     def _note_get_file_creation_date_from_git(self, filepath):
         try:
             creation_date = subprocess.check_output(
-                ["git", "-C", self.notes_folder, "log", "--format=%aI", "--reverse", filepath]
+                ["git", "-C", self.notes_folder, "--no-pager", "log", "--follow", "--format=%aI", "--reverse", filepath]
             )
             cr_date = creation_date.decode("utf-8").split("\n")[0]
             # datetime parse:
@@ -189,7 +194,7 @@ class MdTools:
                 dt = datetime.datetime.strptime(cr_date, "%Y-%m-%dT%H:%M:%S%z")
                 return dt
             except Exception as e:
-                self.log.warning(f"Error parsing date {cr_date}: {e}")
+                self.log.warning(f"Error file {filepath}, failed parsing date {cr_date}: {e}")
                 return None
         except Exception as _:
             return None
@@ -227,7 +232,11 @@ class MdTools:
                 note["metadata"]["creation"] = dt.isoformat()
                 changed += 1
             else:
-                self.log.error(f"Error getting creation date for {filename}")            
+                self.log.error(f"Error getting creation date for {filename}")
+        if "context" not in note["metadata"]:
+            relative_folder = os.path.relpath(os.path.dirname(filename), self.notes_folder)
+            note["metadata"]["context"] = relative_folder
+            changed += 1
         return changed
 
     # Look for tables in markdown content. The last comment before the table can contain metadata
@@ -328,7 +337,7 @@ class MdTools:
                     table_state = 0
         return tables
 
-    def read_md_file(self, filename, verbose=False):
+    def read_md_file(self, filename, verbose=False, fix=False):
         with open(filename, "r") as f:
             note_raw = f.read()
             note_text, changed = self._repairYaml(note_raw)
@@ -345,8 +354,8 @@ class MdTools:
             note["metadata_changes"] = changed
             note["metadata"], note["content"] = self.parse_frontmatter(note_text)
             meta_changes = self.minimal_frontmatter(note, filename)
-            if meta_changes > 0:
-                self.log.info(f"Minimal frontmatter changes added to {filename}: {note['metadata']}")
+            # if meta_changes > 0:
+            #     self.log.info(f"Minimal frontmatter changes added to {filename}: {note['metadata']}")
             note["metadata_changes"] +=  meta_changes
             if "uuid" in note["metadata"]:
                 note_uuid = note["metadata"]["uuid"]
@@ -354,6 +363,12 @@ class MdTools:
                 note_uuid = None
             note["tables"] = self.parse_tables(note["content"], filename, note_uuid)
             self.note_cache_links(note)
+            if fix is True:
+                if note["metadata_changes"] > 0:
+                    if self.write_note(filename, note) is False:
+                        self.log.error(f"Note {filename}, failed to update metadata")
+                    else:
+                        self.log.info(f"Note {filename}, updated metadata, {note["metadata_changes"]} changes")
             # Reassemble the note  XXX can be removed:
             # note_reassembled = self.assemble_markdown(note["metadata"], note["content"])
             # if self.notes_differ(note_text, note_reassembled) > 0:
@@ -380,7 +395,23 @@ class MdTools:
             self.note_file_title_to_filename[note_file_title] = note_filename
             self.notes[note_filename] = note
 
-    def read_notes(self, skip_dirs=[".obsidian"], progress=False):
+    def write_note(self, filename, note):
+        if "metadata" not in note:
+            self.log.error(f"Note {filename} has no metadata")
+            return False
+        if "content" not in note:
+            self.log.error(f"Note {filename} has no content")
+            return False
+        note_reassembled = self.assemble_markdown(note["metadata"], note["content"])
+        if self.dry_run is False:
+            with open(filename, "w") as f:
+                f.write(note_reassembled)
+            self.log.info(f"Note {filename} written")
+        else:
+            self.log.warning(f"Dry run: Note {filename} would be written")
+        return True
+        
+    def read_notes(self, skip_dirs=[".obsidian"], progress=False, fix=False):
         self.notes = {}
         self.uuid_to_note_filename = {}
         self.note_file_title_to_filename = {}
@@ -398,12 +429,17 @@ class MdTools:
                 self.log.info("No markdown notes found")
                 return
             notes_progress = 0
+        num = 0
         for root, dirs, files in os.walk(self.notes_folder):
             for skip_dir in skip_dirs:
                 if skip_dir in dirs:
                     dirs.remove(skip_dir)
 
             for file in files:
+                num += 1
+                if self.max_notes > 0 and num > self.max_notes:
+                    self.log.warning(f"Reached maximum number of notes {self.max_notes}, aborting...")
+                    return
                 if file.endswith(".md"):
 
                     if progress is True:
@@ -416,7 +452,7 @@ class MdTools:
                         )
 
                     note_filename = os.path.join(root, file)
-                    note = self.read_md_file(note_filename)
+                    note = self.read_md_file(note_filename, fix=fix)
                     if note is not None:
                         self.register_note(note_filename, note)
 
