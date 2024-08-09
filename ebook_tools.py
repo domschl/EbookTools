@@ -1,7 +1,7 @@
 import logging
 import os
-import sys
 import json
+import argparse
 
 from calibre_tools import CalibreTools
 from kindle_tools import KindleTools
@@ -14,52 +14,48 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    dry_run = True
-    delete = False
-    interactive = True
-    do_export = False
-    do_notes = False
-    do_kindle = False
-    do_indra = False
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Ebook Tools")
+    parser.add_argument(
+        "-d",
+        "--dry-run",
+        action="store_true",
+        help="Dry run, do not copy or delete files",
+    )
+    parser.add_argument(
+        "-E",
+        "--execute",
+        action="store_true",
+        help="Execute, this can DELETE files, be careful, test first with -d. Note: this option will be removed at some point and be default.",
+    )
+    parser.add_argument(
+        "-x",
+        "--delete",
+        action="store_true",
+        help="Delete files that are debris, DANGER, test first with -d",
+    )
+    parser.add_argument(
+        "-np",
+        "--non-interactive",
+        action="store_true",
+        help="Non-interactive mode, do not show progress bars",
+    )
+    parser.add_argument(
+        "action",
+        nargs="*",
+        help="Action: export, notes, kindle, indra",
+    )
+    args = parser.parse_args()
 
-    args = sys.argv[1:]
-    if "-E" in args:
-        dry_run = False
-        args.remove("-E")
-    if "-d" in args:
-        dry_run = True
-        args.remove("-d")
-    if "-np" in args:
-        interactive = False
-        args.remove("-np")
-    if "-x" in args:
-        delete = True
-        args.remove("-x")
-    if "-h" in args:
-        print("Usage: python ebook_tools.py [export] [notes] [kindle] [-d] [-x]")
-        print("  export: export books from Calibre Library to MetaLibrary folder")
-        print("  notes:  export metadata to Notes as Markdown files")
-        print("  kindle: export Kindle clippings to Notes as Markdown files")
-        print(
-            "  indra: search notes for Indra events from tables with first column 'Date'"
-        )
-        print("  -d: dry run, do not copy or delete files")
-        print("  -E: execute, this can DELETE files, be careful, test first with -d")
-        print("  -x: delete files that are debris, DANGER, test first with -d")
-        print("  -np: non-interactive mode, do not show progress bars")
-        exit(0)
-    if "export" in args:
-        args.remove("export")
-        do_export = True
-    if "notes" in args:
-        args.remove("notes")
-        do_notes = True
-    if "indra" in args:
-        args.remove("indra")
-        do_indra = True
-    if "kindle" in args:
-        args.remove("kindle")
-        do_kindle = True
+    # Set options
+    dry_run = args.dry_run
+    delete = args.delete
+    interactive = not args.non_interactive
+    do_export = "export" in args.action
+    do_notes = "notes" in args.action
+    do_kindle = "kindle" in args.action
+    do_indra = "indra" in args.action
+        
     if (
         do_export is False
         and do_notes is False

@@ -1,5 +1,5 @@
 import logging
-from indralib.indra_time import IndraTime
+from indralib.indra_time import IndraTime  # type: ignore
 
 
 class IndraTools:
@@ -11,7 +11,7 @@ class IndraTools:
         event_cnt = 0
         if "columns" not in table or "rows" not in table:
             if "columns" not in table:
-                self.log.warning(f"Table has no 'columns', skipping")
+                self.log.warning("Table has no 'columns', skipping")
             else:
                 self.log.warning(f"Table {table['columns']} has no 'rows', skipping")
             return event_cnt

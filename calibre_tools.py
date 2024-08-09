@@ -7,17 +7,16 @@ import hashlib
 import shutil
 import json
 import unicodedata
-
-from PIL import Image
-from bs4 import BeautifulSoup  ## pip install beautifulsoup4
-
-# Disable MarkupResemblesLocatorWarning 
-from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
-import warnings
-warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
+from PIL import Image  # type: ignore
+from bs4 import BeautifulSoup  # type:ignore ## pip install beautifulsoup4
 
 from ebook_utils import sanitized_md_filename, progress_bar_string
 from calibre_tools_localization import calibre_prefixes
+
+# Disable MarkupResemblesLocatorWarning 
+from bs4 import MarkupResemblesLocatorWarning
+import warnings
+warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
 
 class CalibreTools:
@@ -92,7 +91,7 @@ class CalibreTools:
                     if file == "metadata.opf":
                         total_entries += 1
             if total_entries == 0:
-                self.log.error(f"No metadata.opf files found in Calibre library")
+                self.log.error("No metadata.opf files found in Calibre library")
                 progress = False
 
         current_entry = 0
@@ -245,6 +244,7 @@ class CalibreTools:
                         "calibre_id": calibre_id,
                         "publication_date": pub_date,
                         "date_added": date_added,
+                        "creation": date_added,
                     }
                     if "cover.jpg" in files:
                         entry["cover"] = os.path.join(root, "cover.jpg")
@@ -358,7 +358,7 @@ class CalibreTools:
         upd_docs = 0
         debris = 0
         upd_doc_names = []
-        if not os.path.exists(target) and not dry_run is True:
+        if not os.path.exists(target) and dry_run is not True:
             self.log.info(f"Creating target path {target}")
             os.makedirs(target)
         # Enumerate all files in target:
@@ -400,7 +400,7 @@ class CalibreTools:
                 target_existing.append(filename)
         for entry in self.lib_entries:
             folder = os.path.join(target, entry["short_folder"])
-            if not os.path.exists(folder) and not dry_run is True:
+            if not os.path.exists(folder) and dry_run is not True:
                 os.makedirs(folder)
             short_title = entry["short_title"]
             num_docs = len(entry["docs"])
@@ -588,13 +588,13 @@ class CalibreTools:
         self, notes, output_path, max_entries=None, cover_rel_path=None, dry_run=False, delete=False
     ):
         output_path = os.path.expanduser(output_path)
-        if not os.path.exists(output_path) and not dry_run is True:
+        if not os.path.exists(output_path) and dry_run is not True:
             self.log.info(f"Creating output path {output_path}")
             os.makedirs(output_path)
         if cover_rel_path is None:
             cover_rel_path = "Covers"
         cover_full_path = os.path.join(output_path, cover_rel_path)
-        if not os.path.exists(cover_full_path) and not dry_run is True:
+        if not os.path.exists(cover_full_path) and dry_run is not True:
             os.makedirs(cover_full_path)
         n = 0
         errs = 0
@@ -706,13 +706,13 @@ class CalibreTools:
             md += "---\n"
 
             md += f"\n# {entry['title']}\n\n"
-            md += f"_by "
+            md += "_by "
             first = True
             for author in entry["creators"]:
                 if first:
                     first = False
                 else:
-                    md += f", "
+                    md += ", "
                 md += f"{author}"
             md += "_\n\n"
             if "calibre_id" in entry.keys() and entry["calibre_id"] is not None:

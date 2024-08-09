@@ -1,8 +1,7 @@
 import os
 import logging
 import copy
-import yaml
-import re
+import yaml  # type: ignore
 
 from ebook_utils import sanitized_md_filename, progress_bar_string
 
