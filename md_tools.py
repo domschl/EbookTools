@@ -20,7 +20,7 @@ class MdTools:
         notes_folder,
         notes_books_folder=None,
         notes_annotations_folder=None,
-        skip_dirs=[".obsidian"],
+        skip_dirs=[".obsidian", "Templates", "Templater"],
         fix = False,
         progress=False,
             dry_run = False,
@@ -49,6 +49,7 @@ class MdTools:
         self.read_notes(skip_dirs=skip_dirs, progress=progress, fix=fix)
 
     def _repairYaml(self, txt):
+        return txt, 0
         lines = txt.split("\n")
         in_front = False
         changed = 0
@@ -341,7 +342,7 @@ class MdTools:
         with open(filename, "r") as f:
             note_raw = f.read()
             note_text, changed = self._repairYaml(note_raw)
-            note_text_s = note_text.strip()
+            note_text_s = note_text.strip()+"\n"
             if note_text_s != note_text:
                 if verbose is True:
                     self.log.warning(f"File stripped: {filename}")
@@ -411,7 +412,7 @@ class MdTools:
             self.log.warning(f"Dry run: Note {filename} would be written")
         return True
         
-    def read_notes(self, skip_dirs=[".obsidian"], progress=False, fix=False):
+    def read_notes(self, skip_dirs, progress=False, fix=False):
         self.notes = {}
         self.uuid_to_note_filename = {}
         self.note_file_title_to_filename = {}
@@ -434,7 +435,6 @@ class MdTools:
             for skip_dir in skip_dirs:
                 if skip_dir in dirs:
                     dirs.remove(skip_dir)
-
             for file in files:
                 num += 1
                 if self.max_notes > 0 and num > self.max_notes:
