@@ -1,7 +1,10 @@
 import os
 import logging
-import copy
+# import copy
 import yaml  # type: ignore
+import uuid
+import subprocess  # type: ignore
+import datetime
 
 from ebook_utils import sanitized_md_filename, progress_bar_string
 
@@ -46,7 +49,7 @@ class MdTools:
         changed = 0
         header_end = None
         for ind, line in enumerate(lines):
-            oldline = copy.copy(line)
+            # oldline = copy.copy(line)
             if in_front is False:
                 if line == "---":
                     in_front = True
@@ -175,8 +178,60 @@ class MdTools:
             note["links"] = links
         return links
 
+    def _note_get_file_creation_date_from_git(self, filepath):
+        try:
+            creation_date = subprocess.check_output(
+                ["git", "-C", self.notes_folder, "log", "--format=%aI", "--reverse", filepath]
+            )
+            cr_date = creation_date.decode("utf-8").split("\n")[0]
+            # datetime parse:
+            try:
+                dt = datetime.datetime.strptime(cr_date, "%Y-%m-%dT%H:%M:%S%z")
+                return dt
+            except Exception as e:
+                self.log.warning(f"Error parsing date {cr_date}: {e}")
+                return None
+        except Exception as _:
+            return None
+
+    def _note_get_file_modification_date(self, filepath):
+        try:
+            stat = os.stat(filepath)
+            dt = datetime.datetime.fromtimestamp(stat.st_mtime)
+            return dt
+        except Exception as e:
+            self.log.warning(f"Error getting file modification date {filepath}: {e}")
+            return None
+        
+    def get_note_creation_date(self, filepath):
+        dt_git = self._note_get_file_creation_date_from_git(filepath)
+        dt_stat = self._note_get_file_modification_date(filepath)
+        # self.log.info(f"Creation date for {filepath} from git: {dt_git}, from stat: {dt_stat}")
+        if dt_git is not None:
+            return dt_git
+        if dt_stat is not None:
+            return dt_stat
+        return None
+    
+    def minimal_frontmatter(self, note, filename):
+        changed = 0
+        if "metadata" not in note:
+            note["metadata"] = {}
+            changed += 1
+        if "uuid" not in note["metadata"]:
+            note["metadata"]["uuid"] = str(uuid.uuid4())
+            changed += 1
+        if "creation" not in note["metadata"]:
+            dt = self.get_note_creation_date(filename)
+            if dt is not None:
+                note["metadata"]["creation"] = dt.isoformat()
+                changed += 1
+            else:
+                self.log.error(f"Error getting creation date for {filename}")            
+        return changed
+
     # Look for tables in markdown content. The last comment before the table can contain metadata
-    # in form: `<!-- key1: value1; key2: value2; ... -->`
+    # in fxsorm: `<!-- key1: value1; key2: value2; ... -->`
     # Returns a dict with tables, each table is a dict with columns and data and metadata
     ### XXX Frickel-Parser!
     def parse_tables(self, content, filepath, note_uuid=None):
@@ -193,7 +248,7 @@ class MdTools:
                 metadata = {}
                 try:
                     meta = line.split("<!--")[1].split("-->")[0]
-                except:
+                except Exception as _:
                     meta = ""
                 if len(meta) > 0:
                     metas = [mt.strip() for mt in meta.split(";")]
@@ -204,7 +259,7 @@ class MdTools:
                             try:
                                 key, value = mt.split(":", 1)
                                 metadata[key.strip()] = value.strip()
-                            except:
+                            except Exception as _:
                                 pass
 
             if table_state == 0:
@@ -289,6 +344,10 @@ class MdTools:
             note = {}
             note["metadata_changes"] = changed
             note["metadata"], note["content"] = self.parse_frontmatter(note_text)
+            meta_changes = self.minimal_frontmatter(note, filename)
+            if meta_changes > 0:
+                self.log.info(f"Minimal frontmatter changes added to {filename}: {note['metadata']}")
+            note["metadata_changes"] +=  meta_changes
             if "uuid" in note["metadata"]:
                 note_uuid = note["metadata"]["uuid"]
             else:
@@ -296,10 +355,10 @@ class MdTools:
             note["tables"] = self.parse_tables(note["content"], filename, note_uuid)
             self.note_cache_links(note)
             # Reassemble the note  XXX can be removed:
-            note_reassembled = self.assemble_markdown(note["metadata"], note["content"])
-            if self.notes_differ(note_text, note_reassembled) > 0:
-                self.log.error(f"Error reassembling note from {filename}")
-                return None
+            # note_reassembled = self.assemble_markdown(note["metadata"], note["content"])
+            # if self.notes_differ(note_text, note_reassembled) > 0:
+            #     self.log.error(f"Error reassembling note from {filename}")
+            #     return None
         return note
 
     def register_note(self, note_filename, note):
@@ -336,7 +395,7 @@ class MdTools:
                     if file.endswith(".md"):
                         notes_count += 1
             if notes_count == 0:
-                self.log.info(f"No markdown notes found")
+                self.log.info("No markdown notes found")
                 return
             notes_progress = 0
         for root, dirs, files in os.walk(self.notes_folder):

@@ -244,7 +244,6 @@ class CalibreTools:
                         "calibre_id": calibre_id,
                         "publication_date": pub_date,
                         "date_added": date_added,
-                        "creation": date_added,
                     }
                     if "cover.jpg" in files:
                         entry["cover"] = os.path.join(root, "cover.jpg")
