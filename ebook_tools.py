@@ -46,13 +46,13 @@ if __name__ == "__main__":
         help="Action: export, notes, kindle, indra",
     )
     # Add max_notes, number of notes processed, default=0 which is all:
-    parser.add_argument(
-        "-m",
-        "--max-notes",
-        type=int,
-        default=0,
-        help="Max number of notes to process, default=0 which is all",
-    )    
+    # parser.add_argument(
+    #     "-m",
+    #     "--max-notes",
+    #     type=int,
+    #     default=0,
+    #     help="Max number of notes to process, default=0 which is all",
+    # )    
     args = parser.parse_args()
 
     # Set options
@@ -138,9 +138,7 @@ if __name__ == "__main__":
             notes_folder=notes_path,
             notes_books_folder=notes_books_path,
             progress=interactive,
-            fix=True,
             dry_run=dry_run,
-            max_notes = args.max_notes,
         )
         table_cnt = 0
         metadata_cnt = 0

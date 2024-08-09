@@ -21,14 +21,11 @@ class MdTools:
         notes_books_folder=None,
         notes_annotations_folder=None,
         skip_dirs=[".obsidian", "Templates", "Templater"],
-        fix = False,
         progress=False,
-            dry_run = False,
-            max_notes=0,
+        dry_run = False,
     ):
         self.log = logging.getLogger("MdTools")
         self.dry_run = dry_run
-        self.max_notes = max_notes
         self.notes_folder = notes_folder
         if notes_books_folder is None:
             notes_books_folder = os.path.join(notes_folder, "Books")
@@ -46,80 +43,7 @@ class MdTools:
             os.makedirs(self.notes_annotations_folder)
             self.log.info(f"Created folder {self.notes_annotations_folder}")
         self.progress = progress
-        self.read_notes(skip_dirs=skip_dirs, progress=progress, fix=fix)
-
-    def _repairYaml(self, txt):
-        return txt, 0
-        lines = txt.split("\n")
-        in_front = False
-        changed = 0
-        header_end = None
-        for ind, line in enumerate(lines):
-            # oldline = copy.copy(line)
-            if in_front is False:
-                if line == "---":
-                    in_front = True
-                else:
-                    return txt, False
-            else:
-                if line == "---":
-                    header_end = ind
-                    break
-                else:
-                    while ":  " in line:
-                        line = line.replace(":  ", ": ")
-                        lines[ind] = line
-                        changed += 1
-                    fields = ["title", "title_sort"]
-                    for field in fields:
-                        tok = field + ": "
-                        tokf = tok + '"'
-                        if line.startswith(tok):
-                            if line.startswith(tokf):
-                                continue
-                            else:
-                                val = line[len(tok) :]
-                                val = val.replace('"', "'")
-
-                                line = tokf + val + '"'
-                                lines[ind] = line
-                                # print(f"REPAIR: {oldline}->{lines[ind]}")
-                                changed += 1
-                    t_fields = ["creation", "modification", "pubdate"]
-                    for field in t_fields:
-                        tok = field + ": "
-                        if line.startswith(tok):
-                            val = line[len(tok) :]
-                            if "T" in val:
-                                val = val.replace("T", " ")
-                                line = tok + val
-                                lines[ind] = line
-                                changed += 1
-                            if val.endswith("Z"):
-                                val = val[:-1] + "+00:00"
-                                line = tok + val
-                                lines[ind] = line
-                                changed += 1
-                    if line.startswith(" -"):
-                        line = " " + line
-                        lines[ind] = line
-                        changed += 1
-                    if line.startswith("- "):
-                        line = "  " + line
-                        lines[ind] = line
-                        changed += 1
-                    if line.endswith(" "):
-                        line = line.strip()
-                        lines[ind] = line
-                        changed += 1
-        if header_end is not None and header_end < len(lines) - 1:
-            if lines[header_end + 1] != "":
-                # Insert empty line after header
-                lines.insert(header_end + 1, "")
-                changed += 1
-        if changed > 0:
-            txt = "\n".join(lines) + "\n"
-        return txt, changed
+        self.read_notes(skip_dirs=skip_dirs, progress=progress)
 
     def parse_frontmatter(self, txt):
         state = 0
@@ -223,21 +147,36 @@ class MdTools:
         changed = 0
         if "metadata" not in note:
             note["metadata"] = {}
+            self.log.info(f"Note {filename} had no metadata, adding...")
             changed += 1
         if "uuid" not in note["metadata"]:
             note["metadata"]["uuid"] = str(uuid.uuid4())
+            self.log.info(f"Note {filename} had no UUID, adding {note['metadata']['uuid']}")
             changed += 1
         if "creation" not in note["metadata"]:
             dt = self.get_note_creation_date(filename)
             if dt is not None:
                 note["metadata"]["creation"] = dt.isoformat()
                 changed += 1
+                self.log.info(f"Note {filename} had no creation date, adding {dt}")
             else:
                 self.log.error(f"Error getting creation date for {filename}")
+        relative_folder = os.path.relpath(os.path.dirname(filename), self.notes_folder)
         if "context" not in note["metadata"]:
-            relative_folder = os.path.relpath(os.path.dirname(filename), self.notes_folder)
             note["metadata"]["context"] = relative_folder
             changed += 1
+            self.log.info(f"Note {filename} had no context, adding {relative_folder}")
+        else:
+            if relative_folder == 'Books':
+                if "tags" in note["metadata"]:
+                    for tag in note["metadata"]["tags"]:
+                        if tag.startswith('Series/'):
+                            relative_folder = 'Books/' + tag[7:]
+                            break
+            if note["metadata"]["context"] != relative_folder:
+                note["metadata"]["context"] = relative_folder
+                self.log.info(f"Note {filename} context changed to {relative_folder}")
+                changed += 1            
         return changed
 
     # Look for tables in markdown content. The last comment before the table can contain metadata
@@ -338,38 +277,25 @@ class MdTools:
                     table_state = 0
         return tables
 
-    def read_md_file(self, filename, verbose=False, fix=False):
+    def read_md_file(self, filename):
         with open(filename, "r") as f:
-            note_raw = f.read()
-            note_text, changed = self._repairYaml(note_raw)
-            note_text_s = note_text.strip()+"\n"
-            if note_text_s != note_text:
-                if verbose is True:
-                    self.log.warning(f"File stripped: {filename}")
-                changed += 1
-                note_text = note_text_s
-            if changed > 0:
-                if verbose is True:
-                    self.log.warning(f"YAML repaired in {filename}")
+            note_text = f.read()
+            changed = 0
             note = {}
-            note["metadata_changes"] = changed
+            note["changes"] = changed
             note["metadata"], note["content"] = self.parse_frontmatter(note_text)
             meta_changes = self.minimal_frontmatter(note, filename)
             # if meta_changes > 0:
             #     self.log.info(f"Minimal frontmatter changes added to {filename}: {note['metadata']}")
-            note["metadata_changes"] +=  meta_changes
+            note["changes"] +=  meta_changes
             if "uuid" in note["metadata"]:
                 note_uuid = note["metadata"]["uuid"]
             else:
                 note_uuid = None
             note["tables"] = self.parse_tables(note["content"], filename, note_uuid)
             self.note_cache_links(note)
-            if fix is True:
-                if note["metadata_changes"] > 0:
-                    if self.write_note(filename, note) is False:
-                        self.log.error(f"Note {filename}, failed to update metadata")
-                    else:
-                        self.log.info(f"Note {filename}, updated metadata, {note["metadata_changes"]} changes")
+            if note["changes"] > 0:
+                self.write_note(filename, note)
             # Reassemble the note  XXX can be removed:
             # note_reassembled = self.assemble_markdown(note["metadata"], note["content"])
             # if self.notes_differ(note_text, note_reassembled) > 0:
@@ -412,7 +338,7 @@ class MdTools:
             self.log.warning(f"Dry run: Note {filename} would be written")
         return True
         
-    def read_notes(self, skip_dirs, progress=False, fix=False):
+    def read_notes(self, skip_dirs, progress=False):
         self.notes = {}
         self.uuid_to_note_filename = {}
         self.note_file_title_to_filename = {}
@@ -437,11 +363,7 @@ class MdTools:
                     dirs.remove(skip_dir)
             for file in files:
                 num += 1
-                if self.max_notes > 0 and num > self.max_notes:
-                    self.log.warning(f"Reached maximum number of notes {self.max_notes}, aborting...")
-                    return
                 if file.endswith(".md"):
-
                     if progress is True:
                         notes_progress += 1
                         progress_str = progress_bar_string(
@@ -452,7 +374,7 @@ class MdTools:
                         )
 
                     note_filename = os.path.join(root, file)
-                    note = self.read_md_file(note_filename, fix=fix)
+                    note = self.read_md_file(note_filename)
                     if note is not None:
                         self.register_note(note_filename, note)
 
@@ -543,17 +465,7 @@ class MdTools:
                         content_updates += 1
                         note["content"] = "\n".join(new_content) + "\n"
                         self.note_cache_links(note)
-                        note_reassembled = self.assemble_markdown(
-                            note["metadata"], note["content"]
-                        )
-                        if dry_run is False:
-                            with open(note_filename, "w") as f:
-                                f.write(note_reassembled)
-                            self.log.info(f"Note {note_filename} updated")
-                        else:
-                            self.log.info(
-                                f"Dry run: Note {note_filename} would be updated"
-                            )
+                        self.write_note(note_filename, note)
         return content_updates
 
     def md_filename(self, name):
