@@ -7,6 +7,7 @@ from calibre_tools import CalibreTools
 from kindle_tools import KindleTools
 from md_tools import MdTools
 from indra_tools import IndraTools
+from metadata import Metadata
 
 
 if __name__ == "__main__":
@@ -43,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "action",
         nargs="*",
-        help="Action: export, notes, kindle, indra",
+        help="Action: export, notes, kindle, indra, meta",
     )
     # Add max_notes, number of notes processed, default=0 which is all:
     # parser.add_argument(
@@ -63,6 +64,7 @@ if __name__ == "__main__":
     do_notes = "notes" in args.action
     do_kindle = "kindle" in args.action
     do_indra = "indra" in args.action
+    do_meta = "meta" in args.action
 
     if args.execute is False:
         dry_run = True
@@ -72,6 +74,7 @@ if __name__ == "__main__":
         and do_notes is False
         and do_kindle is False
         and do_indra is False
+        and do_meta is False
     ):
         logger.error("No action specified, exiting, use -h for help")
         exit(1)
@@ -193,3 +196,21 @@ if __name__ == "__main__":
         logger.info(f"Found {len(clippings)} clippings")
         for i in range(0, 10):
             print(clippings[i])
+    if do_meta is True:
+        # enumerate files in meta_path
+        m_errs = 0
+        m_oks = 0
+        for root, dirs, files in os.walk(meta_path):
+            for file in files:
+                if file.endswith(".pdf") or file.endswith(".epub"):
+                    file_path = os.path.join(root, file)
+                    # print("------------")
+                    md = Metadata(file_path)
+                    # print(file_path)
+                    meta = md.get_metadata()
+                    if meta is None:
+                        m_errs += 1
+                    else:
+                        m_oks += 1
+                        # print(meta)
+        logger.info(f"Processed metadata, ok={m_oks}, errors={m_errs}")
