@@ -1,5 +1,6 @@
 import os
 import logging
+
 # import copy
 import yaml  # type: ignore
 import uuid
@@ -22,7 +23,7 @@ class MdTools:
         notes_annotations_folder=None,
         skip_dirs=[".obsidian", "Templates", "Templater"],
         progress=False,
-        dry_run = False,
+        dry_run=False,
     ):
         self.log = logging.getLogger("MdTools")
         self.dry_run = dry_run
@@ -111,7 +112,17 @@ class MdTools:
     def _note_get_file_creation_date_from_git(self, filepath):
         try:
             creation_date = subprocess.check_output(
-                ["git", "-C", self.notes_folder, "--no-pager", "log", "--follow", "--format=%aI", "--reverse", filepath]
+                [
+                    "git",
+                    "-C",
+                    self.notes_folder,
+                    "--no-pager",
+                    "log",
+                    "--follow",
+                    "--format=%aI",
+                    "--reverse",
+                    filepath,
+                ]
             )
             cr_date = creation_date.decode("utf-8").split("\n")[0]
             # datetime parse:
@@ -119,7 +130,9 @@ class MdTools:
                 dt = datetime.datetime.strptime(cr_date, "%Y-%m-%dT%H:%M:%S%z")
                 return dt
             except Exception as e:
-                self.log.warning(f"Error file {filepath}, failed parsing date {cr_date}: {e}")
+                self.log.warning(
+                    f"Error file {filepath}, failed parsing date {cr_date}: {e}"
+                )
                 return None
         except Exception as _:
             return None
@@ -132,7 +145,7 @@ class MdTools:
         except Exception as e:
             self.log.warning(f"Error getting file modification date {filepath}: {e}")
             return None
-        
+
     def get_note_creation_date(self, filepath):
         dt_git = self._note_get_file_creation_date_from_git(filepath)
         dt_stat = self._note_get_file_modification_date(filepath)
@@ -142,7 +155,7 @@ class MdTools:
         if dt_stat is not None:
             return dt_stat
         return None
-    
+
     def minimal_frontmatter(self, note, filename):
         changed = 0
         if "metadata" not in note:
@@ -151,7 +164,9 @@ class MdTools:
             changed += 1
         if "uuid" not in note["metadata"]:
             note["metadata"]["uuid"] = str(uuid.uuid4())
-            self.log.info(f"Note {filename} had no UUID, adding {note['metadata']['uuid']}")
+            self.log.info(
+                f"Note {filename} had no UUID, adding {note['metadata']['uuid']}"
+            )
             changed += 1
         if "creation" not in note["metadata"]:
             dt = self.get_note_creation_date(filename)
@@ -167,16 +182,16 @@ class MdTools:
             changed += 1
             self.log.info(f"Note {filename} had no context, adding {relative_folder}")
         else:
-            if relative_folder == 'Books':
+            if relative_folder == "Books":
                 if "tags" in note["metadata"]:
                     for tag in note["metadata"]["tags"]:
-                        if tag.startswith('Series/'):
-                            relative_folder = 'Books/' + tag[7:]
+                        if tag.startswith("Series/"):
+                            relative_folder = "Books/" + tag[7:]
                             break
             if note["metadata"]["context"] != relative_folder:
                 note["metadata"]["context"] = relative_folder
                 self.log.info(f"Note {filename} context changed to {relative_folder}")
-                changed += 1            
+                changed += 1
         return changed
 
     # Look for tables in markdown content. The last comment before the table can contain metadata
@@ -207,20 +222,27 @@ class MdTools:
                         if ":" in mt:
                             try:
                                 key, value = mt.split(":", 1)
-                                metadata[key.strip()] = value.strip()
+                                key = key.strip()
+                                value = value.strip()
+                                if value.startswith('"') and value.endswith('"'):
+                                    value = value[1:-1]
+                                metadata[key] = value
                             except Exception as _:
                                 pass
 
             if table_state == 0:
                 if line.startswith("```"):
-                    table_state = 4
+                    if line.lower().startswith("```indraevent"):
+                        table_state = 6
+                    else:
+                        table_state = 4
                     continue
                 if line.startswith("$$"):  # start of latex block
                     table_state = 5
                     continue
                 if line.startswith("|"):
                     if not line.endswith("|"):
-                        print(
+                        self.log.warning(
                             f"Table line does not end with '|', >{line}<, malformed tabled! Ignoring data."
                         )
                         return tables
@@ -246,18 +268,42 @@ class MdTools:
                     rows.append([col.strip() for col in line[1:].split("|")][:-1])
                 else:
                     table_state = 0
-                    if filepath.startswith(self.notes_folder):
-                        subfolders = filepath[len(self.notes_folder) + 1 :]
+                    subfolders = None
+                    # Strip extension from filepath
+                    filepath_noext = os.path.splitext(filepath)[0]
+                    if filepath_noext.startswith(self.notes_folder):
+                        subfolders = filepath_noext[len(self.notes_folder) + 1 :]
+                        if len(columns) > 1 and columns[0] == "Date":
+                            subfolders = f"{subfolders}/{columns[1]}"
+                            bad_chars = [
+                                " ",
+                                "#",
+                                "+",
+                                "$",
+                                ".",
+                                ",",
+                                ":",
+                            ]
+                            for bc in bad_chars:
+                                subfolders = subfolders.replace(bc, "_")
+                            elim_chars = ["*"]
+                            for ec in elim_chars:
+                                subfolders = subfolders.replace(ec, "")
+                            subfolders.replace("__", "_")
+                            if subfolders.endswith("_"):
+                                subfolders = subfolders[:-1]
+                        else:
+                            subfolders = None
                     else:
                         self.log.error(
                             f"Unexpected filepath {filepath} not in notes folder {self.notes_folder}"
                         )
-                        subfolders = ""
+                        subfolders = None
                     if len(rows) > 0:
-                        if "domain" not in metadata:
-                            if subfolders == "":
-                                subfolders == "books"
+                        if "domain" not in metadata and subfolders is not None:
                             metadata["domain"] = f"{subfolders}"
+                        # if len(metadata.keys()) > 0:
+                        #     print(f"Table metadata: {metadata}")
                         table_entry = {
                             "columns": columns,
                             "rows": rows,
@@ -275,6 +321,17 @@ class MdTools:
             elif table_state == 5:
                 if line.startswith("$$"):  # end of latex block
                     table_state = 0
+            elif table_state == 6:
+                if line.startswith("```"):
+                    table_state = 0
+                else:
+                    meta = line.split("=", 1)
+                    if len(meta) == 2:
+                        key = meta[0].strip()
+                        val = meta[1].strip()
+                        if val.startswith('"') and val.endswith('"'):
+                            val = val[1:-1]
+                        metadata[key] = val
         return tables
 
     def read_md_file(self, filename):
@@ -287,7 +344,7 @@ class MdTools:
             meta_changes = self.minimal_frontmatter(note, filename)
             # if meta_changes > 0:
             #     self.log.info(f"Minimal frontmatter changes added to {filename}: {note['metadata']}")
-            note["changes"] +=  meta_changes
+            note["changes"] += meta_changes
             if "uuid" in note["metadata"]:
                 note_uuid = note["metadata"]["uuid"]
             else:
@@ -337,7 +394,7 @@ class MdTools:
         else:
             self.log.warning(f"Dry run: Note {filename} would be written")
         return True
-        
+
     def read_notes(self, skip_dirs, progress=False):
         self.notes = {}
         self.uuid_to_note_filename = {}

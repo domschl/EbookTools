@@ -6,18 +6,23 @@ class IndraTools:
     def __init__(self):
         self.log = logging.getLogger("IndraTools")
         self.events = []
+        self.domains = []
 
-    def add_events_from_table(self, table, metadata):
+    def add_events_from_table(self, table):
         event_cnt = 0
-        if "columns" not in table or "rows" not in table:
+        if "columns" not in table or "rows" not in table or "metadata" not in table:
             if "columns" not in table:
                 self.log.warning("Table has no 'columns', skipping")
-            else:
+            elif "rows" not in table:
                 self.log.warning(f"Table {table['columns']} has no 'rows', skipping")
+            elif "metadata" not in table:
+                self.log.warning(f"Table {table['columns']} has no 'metadata', skipping")
+            else:
+                self.log.warning(f"Table {table['columns']}: Invalid Table, skipping")
             return event_cnt
         if len(table["columns"]) < 2:
             self.log.warning(
-                f"Table {table['columns']}, {metadata} has less than 2 columns, skipping"
+                f"Table {table['columns']}, {table["metadata"]} has less than 2 columns, skipping"
             )
             return event_cnt
         col_nr = len(table["columns"])
@@ -27,13 +32,22 @@ class IndraTools:
                     f"Table {table['columns']}: Row {row} has {len(row)} columns, expected {col_nr}, invalid Table"
                 )
                 return event_cnt
-        if table["columns"][0] != "Date":
-            # self.log.info(
-            #     f"Table {table['columns']}: First column is not 'Date', skipping"
-            # )
+        if len(table["columns"]) == 0 or table["columns"][0] != "Date":
+            self.log.debug(
+                f"Table {table['columns']}: First column is not 'Date', skipping"
+            )
             return event_cnt
-        # if "domain" not in metadata:
-        #     self.log.warning(f"Table {table['columns']}: Metadata has no 'domain' key")
+        if "domain" not in table["metadata"]:
+            self.log.debug(
+                f"Table {table['columns']}: Metadata has no 'domain' key, skipping"
+            )
+            return event_cnt
+        if table["metadata"]["domain"] in self.domains:
+            self.log.warning(
+                f"Table {table['columns']}: Domain {table["metadata"]['domain']} already exists, skipping"
+            )
+            return event_cnt
+        self.domains.append(table["metadata"]["domain"])
         for row in table["rows"]:
             raw_date = row[0]
             try:
@@ -55,7 +69,7 @@ class IndraTools:
             event_data = {}
             for i in range(1, col_nr):
                 event_data[table["columns"][i]] = row[i]
-            event = [jd_date, event_data, metadata]
+            event = [jd_date, event_data, table["metadata"]]
             self.events.append(event)
             event_cnt += 1
         # Sort

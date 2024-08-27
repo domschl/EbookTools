@@ -53,7 +53,7 @@ if __name__ == "__main__":
     #     type=int,
     #     default=0,
     #     help="Max number of notes to process, default=0 which is all",
-    # )    
+    # )
     args = parser.parse_args()
 
     # Set options
@@ -68,7 +68,7 @@ if __name__ == "__main__":
 
     if args.execute is False:
         dry_run = True
-        
+
     if (
         do_export is False
         and do_notes is False
@@ -147,7 +147,10 @@ if __name__ == "__main__":
         metadata_cnt = 0
         for note_name in notes.notes:
             note = notes.notes[note_name]
-            table_cnt += len(note["tables"])
+            for table in note["tables"]:
+                if "metadata" in table and len(table["metadata"].keys()) > 0:
+                    metadata_cnt += 1
+                table_cnt += 1
         logger.info(
             f"Loaded {len(notes.notes)} notes with {table_cnt} tables, {metadata_cnt} metadata tables"
         )
@@ -157,7 +160,7 @@ if __name__ == "__main__":
             for note_name in notes.notes:
                 note = notes.notes[note_name]
                 for table in note["tables"]:
-                    new_evs = indra.add_events_from_table(table, note)
+                    new_evs = indra.add_events_from_table(table)
                     event_cnt += new_evs
             logger.info(
                 f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes"
