@@ -44,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "action",
         nargs="*",
-        help="Action: export, notes, kindle, indra, meta",
+        help="Action: export, notes, kindle, indra, meta, timeline",
     )
     # Add max_notes, number of notes processed, default=0 which is all:
     # parser.add_argument(
@@ -65,6 +65,7 @@ if __name__ == "__main__":
     do_kindle = "kindle" in args.action
     do_indra = "indra" in args.action
     do_meta = "meta" in args.action
+    do_timeline = "timeline" in args.action
 
     if args.execute is False:
         dry_run = True
@@ -165,7 +166,8 @@ if __name__ == "__main__":
             logger.info(
                 f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes"
             )
-            # indra.print_event()
+            if do_timeline is True:
+                indra.print_event()
         if do_notes is True:
             logger.info(f"Exporting metadata to {notes_books_path}")
             n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(

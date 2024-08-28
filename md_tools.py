@@ -137,6 +137,7 @@ class MdTools:
         except Exception as _:
             return None
 
+    def _note_get_file_modification_date(self, filepath):
         try:
             stat = os.stat(filepath)
             dt = datetime.datetime.fromtimestamp(stat.st_mtime)
