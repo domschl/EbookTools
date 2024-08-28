@@ -76,15 +76,39 @@ class IndraTools:
         self.events = sorted(self.events, key=lambda x: x[0])
         return event_cnt
 
-    def print_event(self):
+    def print_event(self, filename=None, time=None, length=None):
+        if time is not None:
+            if time.startswith('"') and time.endswith('"'):
+                time = time[1:-1]
+            time = IndraTime.string_time_2_julian(time)
+            start_time = time[0]
+            if len(time) > 1:
+                end_time = time[1]
+            else:
+                end_time = None
+        else:
+            start_time = None
+            end_time = None
+        if filename is not None:
+            f = open(filename, "w")
+            f.write("| Date                      | Event |\n")
+            f.write("|---------------------------|-------|\n")
+        else:
+            f = None  
         for event in self.events:
+            if start_time is not None:
+                if event[0][0] < start_time:
+                    continue
+            if end_time is not None:
+                if event[0][0] > end_time:
+                    continue
             date_points = []
             event_text = ""
             for ev in event[1]:
                 event_text += f"{ev}: {event[1][ev]}, "
             event_text = event_text[:-2]
-            if len(event_text) > 100:
-                event_text = event_text[:100] + "..."
+            if length is not None and len(event_text) > length:
+                event_text = event_text[:length] + "..."
             for date_part in event[0]:
                 date_points.append(IndraTime.julian_2_string_time(date_part))
             date = None
@@ -95,5 +119,10 @@ class IndraTools:
             else:
                 self.log.warning(f"Invalid date range: {date_points}: {event_text}")
             if date is not None:
-                print(f"| {date:24s} | {event_text}")
+                if f is not None:
+                    f.write(f"| {date:24s} | {event_text} |\n")
+                else:
+                    print(f"| {date:24s} | {event_text} |")
+        if f is not None:
+            f.close()
         return

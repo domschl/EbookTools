@@ -46,6 +46,13 @@ if __name__ == "__main__":
         nargs="*",
         help="Action: export, notes, kindle, indra, meta, timeline",
     )
+    parser.add_argument(
+        "-t",
+        "--time",
+        type=str,
+        default="2022 - 2024",
+        help="Timeline time range, can use BP or BC qualifiers",
+    )
     # Add max_notes, number of notes processed, default=0 which is all:
     # parser.add_argument(
     #     "-m",
@@ -167,7 +174,8 @@ if __name__ == "__main__":
                 f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes"
             )
             if do_timeline is True:
-                indra.print_event()
+                indra.print_event(filename="timeline.md", time=args.time)
+                print("Timeline printed to timeline.md")
         if do_notes is True:
             logger.info(f"Exporting metadata to {notes_books_path}")
             n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
