@@ -130,14 +130,13 @@ class MdTools:
                 dt = datetime.datetime.strptime(cr_date, "%Y-%m-%dT%H:%M:%S%z")
                 return dt
             except Exception as e:
-                self.log.warning(
+                self.log.debug(
                     f"Error file {filepath}, failed parsing date {cr_date}: {e}"
                 )
                 return None
         except Exception as _:
             return None
 
-    def _note_get_file_modification_date(self, filepath):
         try:
             stat = os.stat(filepath)
             dt = datetime.datetime.fromtimestamp(stat.st_mtime)
