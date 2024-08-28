@@ -4,6 +4,9 @@ bin/
 lib/
 lib64
 include/
+etc/
+share/
+.ipynb_checkpoints/
 pyvenv.cfg
 *~
 \#*\#
