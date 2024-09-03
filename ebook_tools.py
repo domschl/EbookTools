@@ -53,6 +53,18 @@ if __name__ == "__main__":
         default="2022 - 2024",
         help="Timeline time range, can use BP or BC qualifiers",
     )
+    parser.add_argument(
+        "-o",
+        "--domains",
+        action="store_true",
+        help="Restrict search domains to list of space separated domains",
+    )
+    parser.add_argument(
+        "-k",
+        "--keywords",
+        action="store_true",
+        help="Restrict search to list of space separated keywords",
+    )
     # Add max_notes, number of notes processed, default=0 which is all:
     # parser.add_argument(
     #     "-m",
@@ -174,8 +186,42 @@ if __name__ == "__main__":
                 f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes"
             )
             if do_timeline is True:
-                indra.print_event(filename="timeline.md", time=args.time)
-                print("Timeline printed to timeline.md")
+                time_par = args.time
+                domains_par = args.domains
+                keywords_par = args.keywords
+                evts = indra.search_events(
+                    time=args.time,
+                    domains=domains_par,
+                    keywords=keywords_par,
+                    in_intervall=False,
+                    full_overlap=True,
+                    partial_overlap=False,
+                )
+                if len(evts) > 0:
+                    print(" --------- < ----- > ---------")
+                    indra.print_events(evts)
+                evts = indra.search_events(
+                    time=args.time,
+                    domains=domains_par,
+                    keywords=keywords_par,
+                    in_intervall=False,
+                    full_overlap=False,
+                    partial_overlap=True,
+                )
+                if len(evts) > 0:
+                    print(" --------- <| ----- |> ---------")
+                    indra.print_events(evts)
+                evts = indra.search_events(
+                    time=args.time,
+                    domains=domains_par,
+                    keywords=keywords_par,
+                    in_intervall=True,
+                    full_overlap=True,
+                    partial_overlap=False,
+                )
+                if len(evts) > 0:
+                    print(" --------- | ----- | ---------")
+                    indra.print_events(evts)
         if do_notes is True:
             logger.info(f"Exporting metadata to {notes_books_path}")
             n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(

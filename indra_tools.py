@@ -1,5 +1,6 @@
 import logging
 from indralib.indra_time import IndraTime  # type: ignore
+from indralib.indra_event import IndraEvent  # type: ignore
 
 
 class IndraTools:
@@ -76,32 +77,89 @@ class IndraTools:
         self.events = sorted(self.events, key=lambda x: x[0])
         return event_cnt
 
-    def print_event(self, filename=None, time=None, length=None):
+    def search_events(self, time=None, domains=None, keywords=None, in_intervall=True, full_overlap=True, partial_overlap=True):
         if time is not None:
             if time.startswith('"') and time.endswith('"'):
                 time = time[1:-1]
             time = IndraTime.string_time_2_julian(time)
             start_time = time[0]
-            if len(time) > 1:
+            if len(time)> 1 and time[1] is not None :
                 end_time = time[1]
             else:
-                end_time = None
+                end_time = start_time
         else:
             start_time = None
             end_time = None
+        if domains is not None:
+            if not isinstance(domains, list):
+                domains = [domains]
+        if keywords is not None:
+            if not isinstance(keywords, list):
+                keywords = [keywords]
+        result = []
+        for event in self.events:
+            if keywords is None:
+                b_keywords = True
+            else:
+                b_keywords = False
+                for keyword in keywords:
+                    for key in event[1]:  # Event data
+                        if keyword in key or keyword in event[1][key]:
+                            b_keywords = True
+                            break
+                    if b_keywords:
+                        break
+                    for key in event[2]:  # Metadata
+                        if keyword in key or keyword in event[2][key]:
+                            b_keywords = True
+                            break
+                    if b_keywords:
+                        break
+            if not b_keywords:
+                continue
+            if domains is None:
+                b_domains = True
+            else:
+                b_domains = False
+                for domain in domains:
+                    if domain in event[2]["domain"] or IndraEvent.mqcmp(domain, event[2]["domain"]):
+                        b_domains = True
+                        break
+            if not b_domains:
+                continue
+            if time is not None:
+                b_time = False
+                event_start = event[0][0]
+                if len(event[0]) and event[0][1] is not None > 1:
+                    event_end = event[0][1]
+                else:
+                    event_end = event[0][0]
+                if full_overlap:
+                    if event_start < start_time and event_end > end_time:
+                        b_time = True
+                if partial_overlap:
+                    if event_start < end_time and event_start > start_time:
+                        b_time = True
+                    if event_end > start_time and event_end < end_time:
+                        b_time = True
+                if in_intervall:
+                    if event_start >= start_time and event_end <= end_time:
+                        b_time = True
+                if not b_time:
+                    continue
+                result.append(event)
+        return result
+    
+    def print_events(self, events, filename=None, length=None):
         if filename is not None:
             f = open(filename, "w")
             f.write("| Date                      | Event |\n")
             f.write("|---------------------------|-------|\n")
         else:
             f = None  
-        for event in self.events:
-            if start_time is not None:
-                if event[0][0] < start_time:
-                    continue
-            if end_time is not None:
-                if event[0][0] > end_time:
-                    continue
+            print("| Date                      | Event |\n")
+            print("|---------------------------|-------|\n")
+        for event in events:
             date_points = []
             event_text = ""
             for ev in event[1]:
