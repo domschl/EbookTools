@@ -51,14 +51,14 @@ if __name__ == "__main__":
         "--time",
         type=str,
         default="",
-        help="Timeline time range, can use BP or BC qualifiers",
+        help="Timeline time range, can use BP (with option ka, Ma, Ga qualifiers) or BC qualifier, e.g. '10 Ma BP - 1920-03-01' or '1943-04 - 2001-12-31' or '1000 BC - 500', Date format: YYYY[-MM[-DD]] [BC] or year.fraction kya BP or year BP or year ka BP or year Ma BP or year Ga BP. Start and end date are separated by ' - ' with mandatory spaces around the dash, e.g. '10 Ma BP - 1920-03-01'. Default is all.",
     )
     parser.add_argument(
         "-o",
         "--domains",
         type=str,
         default="",
-        help="Restrict search domains to list of space separated domains",
+        help="Restrict search domains to list of space separated [Indra-]domains",
     )
     parser.add_argument(
         "-k",
