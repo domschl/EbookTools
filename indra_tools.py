@@ -104,13 +104,13 @@ class IndraTools:
                 b_keywords = False
                 for keyword in keywords:
                     for key in event[1]:  # Event data
-                        if keyword in key or keyword in event[1][key]:
+                        if keyword.lower() in key.lower() or keyword.lower() in event[1][key].lower():
                             b_keywords = True
                             break
                     if b_keywords:
                         break
                     for key in event[2]:  # Metadata
-                        if keyword in key or keyword in event[2][key]:
+                        if keyword.lower() in key.lower() or keyword.lower() in event[2][key].lower():
                             b_keywords = True
                             break
                     if b_keywords:
@@ -122,7 +122,7 @@ class IndraTools:
             else:
                 b_domains = False
                 for domain in domains:
-                    if domain in event[2]["domain"] or IndraEvent.mqcmp(domain, event[2]["domain"]):
+                    if domain.lower() in event[2]["domain"].lower() or IndraEvent.mqcmp(domain.lower(), event[2]["domain"].lower()):
                         b_domains = True
                         break
             if not b_domains:
@@ -130,35 +130,40 @@ class IndraTools:
             if time is not None:
                 b_time = False
                 event_start = event[0][0]
-                if len(event[0]) and event[0][1] is not None > 1:
+                if len(event[0])>1 and event[0][1] is not None:
                     event_end = event[0][1]
                 else:
                     event_end = event[0][0]
-                if full_overlap:
+                if event_start >= start_time and event_end <= end_time:
+                    if in_intervall:
+                        b_time = True
+                else:
                     if event_start < start_time and event_end > end_time:
-                        b_time = True
-                if partial_overlap:
-                    if event_start < end_time and event_start > start_time:
-                        b_time = True
-                    if event_end > start_time and event_end < end_time:
-                        b_time = True
-                if in_intervall:
-                    if event_start >= start_time and event_end <= end_time:
-                        b_time = True
+                        if full_overlap:
+                            b_time = True
+                    else:
+                        if partial_overlap:
+                            if event_start >= start_time and event_start < end_time and event_end > end_time:
+                                b_time = True
+                            if event_end <= end_time and event_end > start_time and event_start < start_time:
+                                b_time = True
                 if not b_time:
                     continue
-                result.append(event)
+            result.append(event)
         return result
     
-    def print_events(self, events, filename=None, length=None):
+    def print_events(self, events, filename=None, length=None, header=False):
         if filename is not None:
             f = open(filename, "w")
-            f.write("| Date                      | Event |\n")
-            f.write("|---------------------------|-------|\n")
         else:
-            f = None  
-            print("| Date                      | Event |\n")
-            print("|---------------------------|-------|\n")
+            f = None
+        if header is True:
+            if f is not None:
+                f.write("| Date                      | Event |\n")
+                f.write("|---------------------------|-------|\n")
+            else:
+                print("| Date                      | Event |")
+                print("|---------------------------|-------|")
         for event in events:
             date_points = []
             event_text = ""

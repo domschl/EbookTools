@@ -50,19 +50,21 @@ if __name__ == "__main__":
         "-t",
         "--time",
         type=str,
-        default="2022 - 2024",
+        default="",
         help="Timeline time range, can use BP or BC qualifiers",
     )
     parser.add_argument(
         "-o",
         "--domains",
-        action="store_true",
+        type=str,
+        default="",
         help="Restrict search domains to list of space separated domains",
     )
     parser.add_argument(
         "-k",
         "--keywords",
-        action="store_true",
+        type=str,
+        default="",
         help="Restrict search to list of space separated keywords",
     )
     # Add max_notes, number of notes processed, default=0 which is all:
@@ -187,40 +189,56 @@ if __name__ == "__main__":
             )
             if do_timeline is True:
                 time_par = args.time
+                if time_par is not None:
+                    if time_par == "":
+                        time_par = None
                 domains_par = args.domains
+                if domains_par is not None:
+                    if domains_par == "":
+                        domains_par = None
+                    else:
+                        domains_par = domains_par.split(" ")
                 keywords_par = args.keywords
+                if keywords_par is not None:
+                    if keywords_par == "":
+                        keywords_par = None
+                    else:
+                        keywords_par = keywords_par.split(" ")
                 evts = indra.search_events(
-                    time=args.time,
+                    time=time_par,
                     domains=domains_par,
                     keywords=keywords_par,
                     in_intervall=False,
                     full_overlap=True,
                     partial_overlap=False,
                 )
-                if len(evts) > 0:
-                    print(" --------- < ----- > ---------")
-                    indra.print_events(evts)
-                evts = indra.search_events(
-                    time=args.time,
-                    domains=domains_par,
-                    keywords=keywords_par,
-                    in_intervall=False,
-                    full_overlap=False,
-                    partial_overlap=True,
-                )
-                if len(evts) > 0:
-                    print(" --------- <| ----- |> ---------")
-                    indra.print_events(evts)
-                evts = indra.search_events(
-                    time=args.time,
-                    domains=domains_par,
-                    keywords=keywords_par,
-                    in_intervall=True,
-                    full_overlap=True,
-                    partial_overlap=False,
-                )
-                if len(evts) > 0:
-                    print(" --------- | ----- | ---------")
+                if time_par is not None:
+                    if len(evts) > 0 and time_par is not None:
+                        print(" --------- < ----- > ---------")
+                        indra.print_events(evts)
+                    evts = indra.search_events(
+                        time=time_par,
+                        domains=domains_par,
+                        keywords=keywords_par,
+                        in_intervall=False,
+                        full_overlap=False,
+                        partial_overlap=True,
+                    )
+                    if len(evts) > 0:
+                        print(" --------- <| ----- |> ---------")
+                        indra.print_events(evts)
+                    evts = indra.search_events(
+                        time=time_par,
+                        domains=domains_par,
+                        keywords=keywords_par,
+                        in_intervall=True,
+                        full_overlap=False,
+                        partial_overlap=False,
+                    )
+                    if len(evts) > 0:
+                        print(" --------- | ----- | ---------")
+                        indra.print_events(evts)
+                else:
                     indra.print_events(evts)
         if do_notes is True:
             logger.info(f"Exporting metadata to {notes_books_path}")
