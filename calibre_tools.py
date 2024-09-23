@@ -7,6 +7,8 @@ import hashlib
 import shutil
 import json
 import unicodedata
+import zipfile
+import base64
 from PIL import Image  # type: ignore
 from bs4 import BeautifulSoup  # type:ignore ## pip install beautifulsoup4
 
@@ -341,6 +343,31 @@ class CalibreTools:
                         return self.lib_entries
         return self.lib_entries
 
+    def check_epub_calibre_bookmarks(self, epub_path, entry, dry_run=False):
+        # Open epub and look if META-INF/calibre_bookmarks.txt exists
+        # if yes, parse it (base64/json) and (TBD) add to entry
+        with zipfile.ZipFile(epub_path, "r") as z:
+            reader = z.open("META-INF/calibre_bookmarks.txt")
+            if reader is not None:
+                # Parse bookmarks
+                bookmarks_base64 = reader.read().decode("utf-8")
+                start_token = "encoding=json+base64:\n"
+                if bookmarks_base64.startswith(start_token):
+                    bookmarks_base64.replace("encoding=json+base64:\n", "")
+                    bookmarks_jsonstr = base64.b64decode(bookmarks_base64) # 
+                    bookmarks = json.loads(bookmarks_jsonstr)
+                    entry["calibre_bookmarks"] = bookmarks
+                    reader.close()
+                    z.close()
+                    if dry_run is False:
+                        self.log.info(f"TODO: sync calibre-bookmarks for {entry['title']}")
+                    else:
+                        self.log.info(f"Would sync calibre-bookmarks for {entry['title']}")
+                else:
+                    self.log.error(f"Calibre-Bookmarks of {entry['title']} not in expected format: {bookmarks_base64}")
+                    reader.close()
+                    z.close()
+
     def export_calibre_books(
         self,
         target_path,
@@ -420,6 +447,8 @@ class CalibreTools:
                     # Copy file
                     updated = True
                     new_docs += 1
+                    if ext == "epub":
+                        self.check_epub_calibre_bookmarks(doc["path"], entry, dry_run)
                     if dry_run is False:
                         shutil.copy2(doc["path"], doc_name)
                         self.log.info(f"Copied {doc_name}")
@@ -438,6 +467,8 @@ class CalibreTools:
                         updated = True
                         upd_docs += 1
                         upd_doc_names.append(doc_name)
+                        if ext == "epub":
+                            self.check_epub_calibre_bookmarks(doc["path"], entry, dry_run)
                         if dry_run is False:
                             shutil.copy2(doc["path"], doc_name)
                             self.log.warning(
