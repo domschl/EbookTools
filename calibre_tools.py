@@ -353,20 +353,37 @@ class CalibreTools:
                 bookmarks_base64 = reader.read().decode("utf-8")
                 start_token = "encoding=json+base64:\n"
                 if bookmarks_base64.startswith(start_token):
-                    bookmarks_base64.replace("encoding=json+base64:\n", "")
-                    bookmarks_jsonstr = base64.b64decode(bookmarks_base64) # 
-                    bookmarks = json.loads(bookmarks_jsonstr)
-                    entry["calibre_bookmarks"] = bookmarks
-                    reader.close()
-                    z.close()
-                    if dry_run is False:
-                        self.log.info(f"TODO: sync calibre-bookmarks for {entry['title']}")
+                    bookmarks_base64 = bookmarks_base64.replace(start_token, "").replace("\n", "").replace("\r", "")
+                    try:
+                        bookmarks_jsonstr = base64.b64decode(bookmarks_base64)
+                    except Exception as e:
+                        self.log.error(f"Error decoding base64 calibre-bookmarks for {entry['title']}, {bookmarks_base64}: {e}")
+                        entry["calibre_bookmarks"] = []
+                        reader.close()
+                        return
+                    try:
+                        bookmarks = json.loads(bookmarks_jsonstr)
+                    except Exception as e:
+                        self.log.error(f"Error parsing json calibre-bookmarks for {entry['title']}, {bookmarks_jsonstr}: {e}")
+                        entry["calibre_bookmarks"] = []
+                        reader.close()
+                        return
+                    if isinstance(bookmarks, list):
+                        entry["calibre_bookmarks"] = bookmarks
+                        if dry_run is False:
+                            self.log.info(f"TODO: sync calibre-bookmarks for {entry['title']}")
+                        else:
+                            self.log.info(f"Would sync calibre-bookmarks for {entry['title']}")
                     else:
-                        self.log.info(f"Would sync calibre-bookmarks for {entry['title']}")
+                        self.log.error(f"Calibre-Bookmarks of {entry['title']} not in expected format: {bookmarks_jsonstr}, expected list")
+                        entry["calibre_bookmarks"] = []
+                    reader.close()
                 else:
                     self.log.error(f"Calibre-Bookmarks of {entry['title']} not in expected format: {bookmarks_base64}")
+                    entry["calibre_bookmarks"] = []
                     reader.close()
-                    z.close()
+            else:
+                entry["calibre_bookmarks"] = []
 
     def export_calibre_books(
         self,
