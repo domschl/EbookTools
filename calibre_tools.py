@@ -79,6 +79,7 @@ class CalibreTools:
         s = s.replace("  ", " ")
         s = s.replace("  ", " ")
         s = s.strip()
+        s = unicodedata.normalize("NFC", s)
         return s
 
     def load_calibre_library_metadata(self, max_entries=None, progress=False):
