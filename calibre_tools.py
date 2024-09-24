@@ -347,7 +347,12 @@ class CalibreTools:
         # Open epub and look if META-INF/calibre_bookmarks.txt exists
         # if yes, parse it (base64/json) and (TBD) add to entry
         with zipfile.ZipFile(epub_path, "r") as z:
-            reader = z.open("META-INF/calibre_bookmarks.txt")
+            try:
+                reader = z.open("META-INF/calibre_bookmarks.txt")
+            except Exception as e:
+                self.log.debug(f"No calibre_bookmarks for {entry['title']}: {e}")
+                entry["calibre_bookmarks"] = []
+                return
             if reader is not None:
                 # Parse bookmarks
                 bookmarks_base64 = reader.read().decode("utf-8")
