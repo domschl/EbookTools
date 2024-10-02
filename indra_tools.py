@@ -113,22 +113,28 @@ class IndraTools:
             self.events.append(event)
             event_cnt += 1
 
-        def jd_interval_sorter(row):
+        def jd_str_interval_sorter(row):
             jdi = IndraTime.string_time_2_julian(row[0])
             if len(jdi) == 1:
                 jdi += jdi
             return (jdi[0], jdi[1])
 
         if table_sorted is False:            
-            sorted_table = sorted(table["rows"], key=jd_interval_sorter)
+            sorted_table = sorted(table["rows"], key=jd_str_interval_sorter)
             print()
             print("-----------------------------------------------------------------")
             self.print_table(table["columns"], sorted_table)
             print("-----------------------------------------------------------------")
             print()
 
+        def jd_interval_sorter(jds):
+            if len(jds) == 1:
+                ls = jds + jds
+            else:
+                ls = jds
+            return (ls[0], ls[1])
         # Sort
-        self.events = sorted(self.events, key=jd_interval_sorter)
+        self.events = sorted(self.events, key=lambda x: jd_interval_sorter(x[0]))
         return event_cnt, events_skipped
 
     def print_table(self, columns, rows):
