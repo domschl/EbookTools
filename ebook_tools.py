@@ -184,7 +184,7 @@ if __name__ == "__main__":
                 note = notes.notes[note_name]
                 for table in note["tables"]:
                     new_evs, new_skipped = indra.add_events_from_table(
-                        table, check_order=False
+                        table, check_order=True
                     )
                     event_cnt += new_evs
                     skipped_cnt += new_skipped

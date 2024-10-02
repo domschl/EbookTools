@@ -52,6 +52,7 @@ class IndraTools:
         self.domains.append(table["metadata"]["domain"])
         last_start_time = None
         last_end_time = None
+        table_sorted = True
         for row in table["rows"]:
             raw_date = row[0]
             try:
@@ -78,22 +79,28 @@ class IndraTools:
                 )
                 events_skipped += 1
                 continue
-            if check_order is True and last_start_time is not None:
+            if last_start_time is not None:
                 if last_start_time > jd_date[0]:
-                    self.log.error(f"Table {table['columns']}: Row {row}: start-date is later than start-state of previous row, invalid order!")
                     events_skipped += 1
-                    self.log.warning(f"{IndraTime.julian_2_string_time(last_start_time)} -> {IndraTime.julian_2_string_time(jd_date[0])}, {events_skipped}")
+                    table_sorted = False
+                    if check_order is True:
+                        self.log.error(f"Table {table['columns']}: Row {row}: start-date is later than start-state of previous row, invalid order!")
+                        self.log.warning(f"{IndraTime.julian_2_string_time(last_start_time)} -> {IndraTime.julian_2_string_time(jd_date[0])}, {events_skipped}")
                     continue
                 elif last_start_time == jd_date[0]:
                     if last_end_time is not None:
                         if len(jd_date) == 1:
-                            self.log.error(f"Table {table['columns']}: Row {row}: interval-less record is later than interval with same start-date, it should be before, invalid order!")
                             events_skipped += 1
-                            continue
-                        elif last_end_time < jd_date[1]:
-                            self.log.error(f"Table {table['columns']}: Row {row}: intervals with same start-date, record with earlier end-date after later end-date, invalid order!")
+                            table_sorted = False
+                            if check_order is True:
+                                self.log.error(f"Table {table['columns']}: Row {row}: interval-less record is later than interval with same start-date, it should be before, invalid order!")
+                                continue
+                        elif last_end_time > jd_date[1]:
                             events_skipped += 1
-                            continue
+                            table_sorted = False
+                            if check_order is True:
+                                self.log.error(f"Table {table['columns']}: Row {row}: intervals with same start-date, record with earlier end-date after later end-date, invalid order!")
+                                continue
             last_start_time = jd_date[0]
             if len(jd_date)>1:
                 last_end_time = jd_date[1]
@@ -105,9 +112,39 @@ class IndraTools:
             event = [jd_date, event_data, table["metadata"]]
             self.events.append(event)
             event_cnt += 1
+
+        def jd_interval_sorter(row):
+            jdi = IndraTime.string_time_2_julian(row[0])
+            if len(jdi) == 1:
+                jdi += jdi
+            return (jdi[0], jdi[1])
+
+        if table_sorted is False:            
+            sorted_table = sorted(table["rows"], key=jd_interval_sorter)
+            print()
+            print("-----------------------------------------------------------------")
+            self.print_table(table["columns"], sorted_table)
+            print("-----------------------------------------------------------------")
+            print()
+
         # Sort
-        self.events = sorted(self.events, key=lambda x: x[0])
+        self.events = sorted(self.events, key=jd_interval_sorter)
         return event_cnt, events_skipped
+
+    def print_table(self, columns, rows):
+        print("|", end="")
+        for column in columns:
+            print(f" {column} |", end="")
+        print()
+        print("|", end="")
+        for _ in range(len(columns)):
+            print(" ----- |", end="")
+        print()
+        for row in rows:
+            print("|", end="")
+            for col in row:
+                print(f" {col} |", end="")
+            print()
 
     def search_events(self, time=None, domains=None, keywords=None, in_intervall=True, full_overlap=True, partial_overlap=True):
         if time is not None:
