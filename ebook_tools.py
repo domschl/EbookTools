@@ -179,13 +179,17 @@ if __name__ == "__main__":
         if do_indra is True:
             indra = IndraTools()
             event_cnt = 0
+            skipped_cnt = 0
             for note_name in notes.notes:
                 note = notes.notes[note_name]
                 for table in note["tables"]:
-                    new_evs = indra.add_events_from_table(table)
+                    new_evs, new_skipped = indra.add_events_from_table(
+                        table, check_order=False
+                    )
                     event_cnt += new_evs
+                    skipped_cnt += new_skipped
             logger.info(
-                f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes"
+                f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes, skipped {skipped_cnt}"
             )
             if do_timeline is True:
                 time_par = args.time

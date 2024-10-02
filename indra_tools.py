@@ -9,8 +9,9 @@ class IndraTools:
         self.events = []
         self.domains = []
 
-    def add_events_from_table(self, table):
+    def add_events_from_table(self, table, check_order=True):
         event_cnt = 0
+        events_skipped = 0
         if "columns" not in table or "rows" not in table or "metadata" not in table:
             if "columns" not in table:
                 self.log.warning("Table has no 'columns', skipping")
@@ -20,35 +21,37 @@ class IndraTools:
                 self.log.warning(f"Table {table['columns']} has no 'metadata', skipping")
             else:
                 self.log.warning(f"Table {table['columns']}: Invalid Table, skipping")
-            return event_cnt
+            return event_cnt, 0
         if len(table["columns"]) < 2:
             self.log.warning(
                 f"Table {table['columns']}, {table["metadata"]} has less than 2 columns, skipping"
             )
-            return event_cnt
+            return event_cnt, 0
         col_nr = len(table["columns"])
         for row in table["rows"]:
             if len(row) != col_nr:
                 self.log.warning(
                     f"Table {table['columns']}: Row {row} has {len(row)} columns, expected {col_nr}, invalid Table"
                 )
-                return event_cnt
+                return event_cnt, 0
         if len(table["columns"]) == 0 or table["columns"][0] != "Date":
             self.log.debug(
                 f"Table {table['columns']}: First column is not 'Date', skipping"
             )
-            return event_cnt
+            return event_cnt, 0
         if "domain" not in table["metadata"]:
             self.log.debug(
                 f"Table {table['columns']}: Metadata has no 'domain' key, skipping"
             )
-            return event_cnt
+            return event_cnt, 0
         if table["metadata"]["domain"] in self.domains:
             self.log.warning(
                 f"Table {table['columns']}: Domain {table["metadata"]['domain']} already exists, skipping"
             )
-            return event_cnt
+            return event_cnt, 0
         self.domains.append(table["metadata"]["domain"])
+        last_start_time = None
+        last_end_time = None
         for row in table["rows"]:
             raw_date = row[0]
             try:
@@ -61,17 +64,41 @@ class IndraTools:
                         )
                         jd_date = None
                 if jd_date is None:
+                    events_skipped += 1
                     continue
                 if len(jd_date) == 2:
                     if jd_date[1] < jd_date[0]:
                         self.log.error(f"Table {table['columns']}: Row {row}: end-date is earlier than start-state, invalid!")
                         jd_date = None
+                        events_skipped += 1
                         continue
             except ValueError:
                 self.log.warning(
                     f"Table {table['columns']}: Row {row} has invalid date {raw_date}"
                 )
+                events_skipped += 1
                 continue
+            if check_order is True and last_start_time is not None:
+                if last_start_time > jd_date[0]:
+                    self.log.error(f"Table {table['columns']}: Row {row}: start-date is later than start-state of previous row, invalid order!")
+                    events_skipped += 1
+                    self.log.warning(f"{IndraTime.julian_2_string_time(last_start_time)} -> {IndraTime.julian_2_string_time(jd_date[0])}, {events_skipped}")
+                    continue
+                elif last_start_time == jd_date[0]:
+                    if last_end_time is not None:
+                        if len(jd_date) == 1:
+                            self.log.error(f"Table {table['columns']}: Row {row}: interval-less record is later than interval with same start-date, it should be before, invalid order!")
+                            events_skipped += 1
+                            continue
+                        elif last_end_time < jd_date[1]:
+                            self.log.error(f"Table {table['columns']}: Row {row}: intervals with same start-date, record with earlier end-date after later end-date, invalid order!")
+                            events_skipped += 1
+                            continue
+            last_start_time = jd_date[0]
+            if len(jd_date)>1:
+                last_end_time = jd_date[1]
+            else:
+                last_end_time = None
             event_data = {}
             for i in range(1, col_nr):
                 event_data[table["columns"][i]] = row[i]
@@ -80,7 +107,7 @@ class IndraTools:
             event_cnt += 1
         # Sort
         self.events = sorted(self.events, key=lambda x: x[0])
-        return event_cnt
+        return event_cnt, events_skipped
 
     def search_events(self, time=None, domains=None, keywords=None, in_intervall=True, full_overlap=True, partial_overlap=True):
         if time is not None:
