@@ -62,6 +62,11 @@ class IndraTools:
                         jd_date = None
                 if jd_date is None:
                     continue
+                if len(jd_date) == 2:
+                    if jd_date[1] < jd_date[0]:
+                        self.log.error(f"Table {table['columns']}: Row {row}: end-date is earlier than start-state, invalid!")
+                        jd_date = None
+                        continue
             except ValueError:
                 self.log.warning(
                     f"Table {table['columns']}: Row {row} has invalid date {raw_date}"
