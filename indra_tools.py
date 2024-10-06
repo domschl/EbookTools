@@ -56,7 +56,7 @@ class IndraTools:
         for row in table["rows"]:
             raw_date = row[0]
             try:
-                jd_date = IndraTime.string_time_2_julian(raw_date)
+                jd_date = IndraTime.string_time_to_julian(raw_date)
                 # print(jd_date)
                 for date_part in jd_date:
                     if date_part is None:
@@ -85,7 +85,7 @@ class IndraTools:
                     table_sorted = False
                     if check_order is True:
                         self.log.error(f"Table {table['columns']}: Row {row}: start-date is later than start-state of previous row, invalid order!")
-                        self.log.warning(f"{IndraTime.julian_2_string_time(last_start_time)} -> {IndraTime.julian_2_string_time(jd_date[0])}, {events_skipped}")
+                        self.log.warning(f"{IndraTime.julian_to_string_time(last_start_time)} -> {IndraTime.julian_to_string_time(jd_date[0])}, {events_skipped}")
                     continue
                 elif last_start_time == jd_date[0]:
                     if last_end_time is not None:
@@ -114,7 +114,7 @@ class IndraTools:
             event_cnt += 1
 
         def jd_str_interval_sorter(row):
-            jdi = IndraTime.string_time_2_julian(row[0])
+            jdi = IndraTime.string_time_to_julian(row[0])
             if len(jdi) == 1:
                 jdi += jdi
             return (jdi[0], jdi[1])
@@ -156,7 +156,7 @@ class IndraTools:
         if time is not None:
             if time.startswith('"') and time.endswith('"'):
                 time = time[1:-1]
-            time = IndraTime.string_time_2_julian(time)
+            time = IndraTime.string_time_to_julian(time)
             start_time = time[0]
             if len(time)> 1 and time[1] is not None :
                 end_time = time[1]
@@ -248,7 +248,7 @@ class IndraTools:
             if length is not None and len(event_text) > length:
                 event_text = event_text[:length] + "..."
             for date_part in event[0]:
-                date_points.append(IndraTime.julian_2_string_time(date_part))
+                date_points.append(IndraTime.julian_to_string_time(date_part))
             date = None
             if len(date_points) == 1:
                 date = date_points[0]

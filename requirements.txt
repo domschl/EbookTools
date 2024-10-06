@@ -1,8 +1,7 @@
 pillow
 beautifulsoup4
 lxml
-indralib
+indralib >= 0.2.1
 pyyaml
 pypdf
 pycryptodome
-
