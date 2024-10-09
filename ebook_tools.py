@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import logging
+import sys
 import os
 import json
 import argparse
@@ -103,7 +104,10 @@ if __name__ == "__main__":
         logger.error("No action specified, exiting, use -h for help")
         exit(1)
 
-    config_file = os.path.expanduser("~/.config/EbookTools/ebook_tools.json")
+    if sys.platform == 'haiku1':
+        config_file = os.path.expanduser("~/config/settings/EbookTools/ebook_tools.json")
+    else:
+        config_file = os.path.expanduser("~/.config/EbookTools/ebook_tools.json")
 
     if os.path.exists(config_file) is False:
         default_config = {
