@@ -754,7 +754,8 @@ class CalibreTools:
                     and entry[field] is not None
                 ):
                     if field in string_fields:
-                        md += f"{field}: \"{entry[field].replace('"', "'")}\"\n"
+                        fld = entry[field].replace('"', "'")
+                        md += f"{field}: \"{fld}\"\n"
                     else:
                         md += f"{field}: {entry[field]}\n"
             md += "---\n"

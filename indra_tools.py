@@ -24,7 +24,7 @@ class IndraTools:
             return event_cnt, 0
         if len(table["columns"]) < 2:
             self.log.warning(
-                f"Table {table['columns']}, {table["metadata"]} has less than 2 columns, skipping"
+                f"Table {table['columns']}, {table['metadata']} has less than 2 columns, skipping"
             )
             return event_cnt, 0
         col_nr = len(table["columns"])
@@ -46,7 +46,7 @@ class IndraTools:
             return event_cnt, 0
         if table["metadata"]["domain"] in self.domains:
             self.log.warning(
-                f"Table {table['columns']}: Domain {table["metadata"]['domain']} already exists, skipping"
+                f"Table {table['columns']}: Domain {table['metadata']['domain']} already exists, skipping"
             )
             return event_cnt, 0
         self.domains.append(table["metadata"]["domain"])
