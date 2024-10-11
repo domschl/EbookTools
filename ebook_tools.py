@@ -70,6 +70,9 @@ if __name__ == "__main__":
         default="",
         help="Restrict search to list of space separated keywords",
     )
+    parser.add_argument(
+        "-V", "--vacuum", action="store_true", help="Show possible debris"
+    )
     # Add max_notes, number of notes processed, default=0 which is all:
     # parser.add_argument(
     #     "-m",
@@ -104,8 +107,10 @@ if __name__ == "__main__":
         logger.error("No action specified, exiting, use -h for help")
         exit(1)
 
-    if sys.platform == 'haiku1':
-        config_file = os.path.expanduser("~/config/settings/EbookTools/ebook_tools.json")
+    if sys.platform == "haiku1":
+        config_file = os.path.expanduser(
+            "~/config/settings/EbookTools/ebook_tools.json"
+        )
     else:
         config_file = os.path.expanduser("~/.config/EbookTools/ebook_tools.json")
 
@@ -159,6 +164,7 @@ if __name__ == "__main__":
             format=export_formats,
             dry_run=dry_run,
             delete=delete,
+            vacuum=args.vacuum,
         )
         logger.info(
             f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"

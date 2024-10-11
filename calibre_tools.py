@@ -15,9 +15,10 @@ from bs4 import BeautifulSoup  # type:ignore ## pip install beautifulsoup4
 from ebook_utils import sanitized_md_filename, progress_bar_string
 from calibre_tools_localization import calibre_prefixes
 
-# Disable MarkupResemblesLocatorWarning 
+# Disable MarkupResemblesLocatorWarning
 from bs4 import MarkupResemblesLocatorWarning
 import warnings
+
 warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
 
@@ -84,7 +85,7 @@ class CalibreTools:
 
     def load_calibre_library_metadata(self, max_entries=None, progress=False):
         self.lib_entries = []
-        
+
         if progress is True:
             total_entries = 0
             for root, dirs, files in os.walk(self.calibre_path):
@@ -107,7 +108,9 @@ class CalibreTools:
                     if progress is True:
                         current_entry += 1
                         progress_bar = progress_bar_string(current_entry, total_entries)
-                        print(f"{progress_bar} {current_entry}/{total_entries}", end="\r")
+                        print(
+                            f"{progress_bar} {current_entry}/{total_entries}", end="\r"
+                        )
 
                     title = None
                     title_sort = None
@@ -122,7 +125,7 @@ class CalibreTools:
                     calibre_id = None
                     pub_date = None
                     date_added = None
-                    
+
                     # cover = None
                     docs = []
 
@@ -153,11 +156,16 @@ class CalibreTools:
                     creators = []
                     for creator in metadata.findall("dc:creator", ns):
                         if "{http://www.idpf.org/2007/opf}role" in creator.attrib:
-                            if creator.attrib["{http://www.idpf.org/2007/opf}role"] == "aut":
-                                if ',' in creator.text:
-                                    self.log.error(f"Author name contains comma: {creator.text}")
+                            if (
+                                creator.attrib["{http://www.idpf.org/2007/opf}role"]
+                                == "aut"
+                            ):
+                                if "," in creator.text:
+                                    self.log.error(
+                                        f"Author name contains comma: {creator.text}"
+                                    )
                                 creators.append(creator.text)
-                    
+
                     subjects = metadata.findall("dc:subject", ns)
                     subjects = [subject.text for subject in subjects]
                     languages = metadata.findall("dc:language", ns)
@@ -210,17 +218,23 @@ class CalibreTools:
                                 ).isoformat()
                             if meta.attrib["name"] == "calibre:title_sort":
                                 title_sort = meta.attrib["content"]
-                                for lang in calibre_prefixes:  # remove localized prefixes ", The", ", Der", etc. (curr: DE, EN)
+                                for (
+                                    lang
+                                ) in (
+                                    calibre_prefixes
+                                ):  # remove localized prefixes ", The", ", Der", etc. (curr: DE, EN)
                                     for prefix in calibre_prefixes[lang]["prefixes"]:
                                         ending = f", {prefix}"
                                         if title_sort.endswith(ending):
-                                            title_sort = title_sort[:-len(ending)]
+                                            title_sort = title_sort[: -len(ending)]
                                             break
                                 # Check if starts with lowercase
                                 if title_sort[0].islower():
                                     # check if second character is uppercase (iPad, jQuery, etc.)
-                                    if len(title_sort)>1 and title_sort[1].islower():
-                                        self.log.warning(f"Shortened title starts with lowercase: {title_sort}, consider fixing!")
+                                    if len(title_sort) > 1 and title_sort[1].islower():
+                                        self.log.warning(
+                                            f"Shortened title starts with lowercase: {title_sort}, consider fixing!"
+                                        )
                                         # title_sort = title_sort[0].upper() + title_sort[1:]  # automatic fixing can go wrong (jQuery, etc.)
                     identifiers = []
                     # Find records of type:
@@ -274,7 +288,7 @@ class CalibreTools:
                     entry["docs"] = docs
                     entry["formats"] = formats
                     short_title = entry["title_sort"]
-                    
+
                     title = entry["title"]
                     # If title ends with roman or arabic numerals, store them as postfix:
                     endfix = ""
@@ -359,33 +373,49 @@ class CalibreTools:
                 bookmarks_base64 = reader.read().decode("utf-8")
                 start_token = "encoding=json+base64:\n"
                 if bookmarks_base64.startswith(start_token):
-                    bookmarks_base64 = bookmarks_base64.replace(start_token, "").replace("\n", "").replace("\r", "")
+                    bookmarks_base64 = (
+                        bookmarks_base64.replace(start_token, "")
+                        .replace("\n", "")
+                        .replace("\r", "")
+                    )
                     try:
                         bookmarks_jsonstr = base64.b64decode(bookmarks_base64)
                     except Exception as e:
-                        self.log.error(f"Error decoding base64 calibre-bookmarks for {entry['title']}, {bookmarks_base64}: {e}")
+                        self.log.error(
+                            f"Error decoding base64 calibre-bookmarks for {entry['title']}, {bookmarks_base64}: {e}"
+                        )
                         entry["calibre_bookmarks"] = []
                         reader.close()
                         return
                     try:
                         bookmarks = json.loads(bookmarks_jsonstr)
                     except Exception as e:
-                        self.log.error(f"Error parsing json calibre-bookmarks for {entry['title']}, {bookmarks_jsonstr}: {e}")
+                        self.log.error(
+                            f"Error parsing json calibre-bookmarks for {entry['title']}, {bookmarks_jsonstr}: {e}"
+                        )
                         entry["calibre_bookmarks"] = []
                         reader.close()
                         return
                     if isinstance(bookmarks, list):
                         entry["calibre_bookmarks"] = bookmarks
                         if dry_run is False:
-                            self.log.info(f"TODO: sync calibre-bookmarks for {entry['title']}")
+                            self.log.info(
+                                f"TODO: sync calibre-bookmarks for {entry['title']}"
+                            )
                         else:
-                            self.log.info(f"Would sync calibre-bookmarks for {entry['title']}")
+                            self.log.info(
+                                f"Would sync calibre-bookmarks for {entry['title']}"
+                            )
                     else:
-                        self.log.error(f"Calibre-Bookmarks of {entry['title']} not in expected format: {bookmarks_jsonstr}, expected list")
+                        self.log.error(
+                            f"Calibre-Bookmarks of {entry['title']} not in expected format: {bookmarks_jsonstr}, expected list"
+                        )
                         entry["calibre_bookmarks"] = []
                     reader.close()
                 else:
-                    self.log.error(f"Calibre-Bookmarks of {entry['title']} not in expected format: {bookmarks_base64}")
+                    self.log.error(
+                        f"Calibre-Bookmarks of {entry['title']} not in expected format: {bookmarks_base64}"
+                    )
                     entry["calibre_bookmarks"] = []
                     reader.close()
             else:
@@ -397,6 +427,7 @@ class CalibreTools:
         format=["pdf", "epub", "md", "txt"],
         dry_run=False,
         delete=False,
+        vacuum=False,
     ):
         target = os.path.expanduser(target_path)
         self.old_lib_entries, self.sequence_number = self.load_state(target)
@@ -417,10 +448,12 @@ class CalibreTools:
         for root, dirs, files in os.walk(target):
             # if root is a dot dir, ignore
             if os.path.basename(root).startswith("."):
-                self.log.info(f"Ignoring dot folder {root}")
+                if vacuum is True:
+                    self.log.info(f"Ignoring dot folder {root}")
                 continue
             if os.path.basename(root).endswith(".sdr"):
-                self.log.info(f"Skipping koreader metadata folder {root}")
+                if vacuum is True:
+                    self.log.info(f"Skipping koreader metadata folder {root}")
                 title = os.path.basename(root)[:-4]
                 koreader_metadata[title] = {
                     "folder": root,
@@ -431,12 +464,12 @@ class CalibreTools:
                 # XXX parse metadata for highlights, notes
                 if os.path.exists(epub_meta):
                     koreader_metadata[title]["formats"].append("epub")
-                    koreader_metadata[title]["metadata"].append({'epub': {}})
+                    koreader_metadata[title]["metadata"].append({"epub": {}})
                 pdf_meta = os.path.join(root, "metadata.pdf.lua")
                 # XXX parse metadata for highlights, notes
                 if os.path.exists(pdf_meta):
                     koreader_metadata[title]["formats"].append("pdf")
-                    koreader_metadata[title]["metadata"].append({'pdf': {}})
+                    koreader_metadata[title]["metadata"].append({"pdf": {}})
                 continue
             for file in files:
                 if file in ["repo_state.json", "annotations.json"]:
@@ -460,7 +493,7 @@ class CalibreTools:
             for index, doc in enumerate(entry["docs"]):
                 ext = doc["name"].split(".")[-1]
                 ref_name = f"{short_title}.{ext}"
-                entry["docs"][index]["ref_name"] = ref_name    
+                entry["docs"][index]["ref_name"] = ref_name
                 if ext not in format:
                     continue
                 doc_name = os.path.join(folder, ref_name)
@@ -491,16 +524,14 @@ class CalibreTools:
                         upd_docs += 1
                         upd_doc_names.append(doc_name)
                         if ext == "epub":
-                            self.check_epub_calibre_bookmarks(doc["path"], entry, dry_run)
+                            self.check_epub_calibre_bookmarks(
+                                doc["path"], entry, dry_run
+                            )
                         if dry_run is False:
                             shutil.copy2(doc["path"], doc_name)
-                            self.log.warning(
-                                f"Updated **CHANGED** {doc_name}"
-                            )
+                            self.log.warning(f"Updated **CHANGED** {doc_name}")
                         else:
-                            self.log.warning(
-                                f"Would update **CHANGED** {doc_name}"
-                            )
+                            self.log.warning(f"Would update **CHANGED** {doc_name}")
                     # Remove from target_existing
                     if doc_name in target_existing:
                         target_existing.remove(doc_name)
@@ -508,13 +539,15 @@ class CalibreTools:
                         self.log.error(
                             f"File {doc_name} not found in target_existing, Unicode encoding troubles in filename is most probable cause, manual cleanup required!"
                         )
-                        self.log.warning("On macOS, filesystems that are unaware of upper/lowercase can cause this issue on renaming files with only case changes. Simply run twice!")
+                        self.log.warning(
+                            "On macOS, filesystems that are unaware of upper/lowercase can cause this issue on renaming files with only case changes. Simply run twice!"
+                        )
                         updated = True
         if len(target_existing) > 0:
             self.log.warning("Found files in target that are not in library:")
             updated = True
             for file in target_existing:
-                if delete is True:  
+                if delete is True:
                     if dry_run is False:
                         os.remove(file)
                         self.log.warning(f"Deleted {file}")
@@ -524,7 +557,7 @@ class CalibreTools:
         valid_books = []
         sdr_debris = []
         for entry in self.lib_entries:
-            valid_books.append(entry['short_title'])
+            valid_books.append(entry["short_title"])
         for title in koreader_metadata:
             if title not in valid_books:
                 sdr_debris.append(title)
@@ -534,11 +567,17 @@ class CalibreTools:
                 if delete is True:
                     if dry_run is False:
                         shutil.rmtree(koreader_metadata[title]["folder"])
-                        self.log.warning(f"Deleted obsolete metadata folder {koreader_metadata[title]['folder']}")
+                        self.log.warning(
+                            f"Deleted obsolete metadata folder {koreader_metadata[title]['folder']}"
+                        )
                     else:
-                        self.log.warning(f"Would delete obsolete metadata folder {koreader_metadata[title]['folder']}")
+                        self.log.warning(
+                            f"Would delete obsolete metadata folder {koreader_metadata[title]['folder']}"
+                        )
         else:
-            self.log.info("No Koreader metadata folders without corresponding library entry found")
+            self.log.info(
+                "No Koreader metadata folders without corresponding library entry found"
+            )
         # Enumerate all folders, remove empty folders
         debris = len(target_existing)
         for root, dirs, files in os.walk(target, topdown=False):
@@ -568,8 +607,12 @@ class CalibreTools:
         else:
             self.log.info("No updates and no new files found, nothing to do.")
         if update_state is True or self.sequence_number == 0:
-            self.sequence_number = self.save_state(target, self.lib_entries, self.sequence_number)
-            self.log.info(f"Saved state to {target}/repo_state.json, sequence number: {self.sequence_number}")
+            self.sequence_number = self.save_state(
+                target, self.lib_entries, self.sequence_number
+            )
+            self.log.info(
+                f"Saved state to {target}/repo_state.json, sequence number: {self.sequence_number}"
+            )
 
         return new_docs, upd_docs, debris
 
@@ -613,10 +656,10 @@ class CalibreTools:
                         f"repo_state.json sequence number changed from {sequence_number} to {self.sequence_number}"
                     )
                     return True
-        except Exception as e:  
+        except Exception as e:
             self.log.error(f"Error reading repo_state.json: {e}")
         return False
-    
+
     def _gen_thumbnail(
         self, image_path, thumb_dir, thumb_dir_full, uuid, size=(128, 128), force=False
     ):
@@ -639,7 +682,13 @@ class CalibreTools:
         return link
 
     def export_calibre_metadata_to_markdown(
-        self, notes, output_path, max_entries=None, cover_rel_path=None, dry_run=False, delete=False
+        self,
+        notes,
+        output_path,
+        max_entries=None,
+        cover_rel_path=None,
+        dry_run=False,
+        delete=False,
     ):
         output_path = os.path.expanduser(output_path)
         if not os.path.exists(output_path) and dry_run is not True:
@@ -655,7 +704,9 @@ class CalibreTools:
         content_updates = 0
 
         if notes.notes_books_folder != output_path:
-            self.log.error(f"Notes books folder {notes.notes_books_folder} does not match output_path {output_path}")
+            self.log.error(
+                f"Notes books folder {notes.notes_books_folder} does not match output_path {output_path}"
+            )
             return 0, 1, content_updates
 
         existing_notes_filenames = {}
@@ -663,13 +714,18 @@ class CalibreTools:
         for note_filename in notes.notes:
             if note_filename.startswith(output_path):
                 uuid = None
-                if 'metadata' in notes.notes[note_filename] and 'uuid' in notes.notes[note_filename]['metadata']:
-                    uuid = notes.notes[note_filename]['metadata']['uuid'] 
+                if (
+                    "metadata" in notes.notes[note_filename]
+                    and "uuid" in notes.notes[note_filename]["metadata"]
+                ):
+                    uuid = notes.notes[note_filename]["metadata"]["uuid"]
                 if uuid is not None:
                     existing_notes_filenames[note_filename] = uuid
                     existing_notes_uuids[uuid] = note_filename
                 else:
-                    self.log.error(f"Note {note_filename} does not have a UUID, ignoring")
+                    self.log.error(
+                        f"Note {note_filename} does not have a UUID, ignoring"
+                    )
 
         for entry in self.lib_entries:
             mandatory_fields = [
@@ -746,7 +802,7 @@ class CalibreTools:
                     md += f"  - {id.strip()}\n"
             if "calibre_id" in entry.keys() and entry["calibre_id"] is not None:
                 md += f"calibre_id: {entry['calibre_id']}\n"
-            string_fields = ['title_sort', 'publisher']
+            string_fields = ["title_sort", "publisher"]
             for field in entry.keys():
                 if (
                     field not in mandatory_fields
@@ -755,7 +811,7 @@ class CalibreTools:
                 ):
                     if field in string_fields:
                         fld = entry[field].replace('"', "'")
-                        md += f"{field}: \"{fld}\"\n"
+                        md += f'{field}: "{fld}"\n'
                     else:
                         md += f"{field}: {entry[field]}\n"
             md += "---\n"
@@ -780,21 +836,39 @@ class CalibreTools:
                         cover_full_path,
                         entry["uuid"],
                         force=False,
-                    ) 
+                    )
                     md += f"![{sanitized_title}]({cover_path})\n\n"
             if "description" in entry.keys() and entry["description"] is not None:
                 html_text = entry["description"]
                 # Convert HTML to markdown
-                md_tokens = [("<h1>", "&num; "), ("<h2>", "&num;&num; "), ("<h3>", "&num;&num;&num; "), ("<h4>", "&num;&num;&num;&num; "),
-                             ("</h1>", "\n\n"), ("</h2>", "\n\n"), ("</h3>", "\n\n"), ("</h4>", "\n\n"), 
-                             ("<em>", " *"), ("</em>", "* "), 
-                             ("<strong>", "**"), ("</strong>", "** "),
-                             ("<p>", ""), ("</p>", "\n\n"), ("<br>", "\n\n"), ("<br/>", "\n\n"), ("<br />", "\n\n"), 
-                             ("<li>", "- "), ("</li>", "\n"),
-                             ("  ", " "), ("  ", " ")]
+                md_tokens = [
+                    ("<h1>", "&num; "),
+                    ("<h2>", "&num;&num; "),
+                    ("<h3>", "&num;&num;&num; "),
+                    ("<h4>", "&num;&num;&num;&num; "),
+                    ("</h1>", "\n\n"),
+                    ("</h2>", "\n\n"),
+                    ("</h3>", "\n\n"),
+                    ("</h4>", "\n\n"),
+                    ("<em>", " *"),
+                    ("</em>", "* "),
+                    ("<strong>", "**"),
+                    ("</strong>", "** "),
+                    ("<p>", ""),
+                    ("</p>", "\n\n"),
+                    ("<br>", "\n\n"),
+                    ("<br/>", "\n\n"),
+                    ("<br />", "\n\n"),
+                    ("<li>", "- "),
+                    ("</li>", "\n"),
+                    ("  ", " "),
+                    ("  ", " "),
+                ]
                 for token in md_tokens:
                     html_text = html_text.replace(token[0], token[1])
-                text = BeautifulSoup(html_text, features="lxml").get_text() #   "html.parser").get_text()
+                text = BeautifulSoup(
+                    html_text, features="lxml"
+                ).get_text()  #   "html.parser").get_text()
                 cmt = text.replace("\n", "\n> ")
                 md += f"> {cmt}\n"
             # if len(foot_tags) > 3:
@@ -803,26 +877,35 @@ class CalibreTools:
                 md += f"\nAuthors: {foot_authors}\n"
 
             uuid_exists = False
-            if entry['uuid'] in notes.uuid_to_note_filename:
+            if entry["uuid"] in notes.uuid_to_note_filename:
                 uuid_exists = True
-                if entry['uuid'] in existing_notes_uuids:
-                    old_filename = notes.uuid_to_note_filename[entry['uuid']]
+                if entry["uuid"] in existing_notes_uuids:
+                    old_filename = notes.uuid_to_note_filename[entry["uuid"]]
                     if old_filename != md_filename:
-                        self.log.warning(f"Note {old_filename} was renamed to {md_filename}")
-                        content_updates += notes.rename_note(old_filename, md_filename, update_links=True, dry_run=dry_run)
+                        self.log.warning(
+                            f"Note {old_filename} was renamed to {md_filename}"
+                        )
+                        content_updates += notes.rename_note(
+                            old_filename,
+                            md_filename,
+                            update_links=True,
+                            dry_run=dry_run,
+                        )
                         if old_filename in existing_notes_filenames:
                             del existing_notes_filenames[old_filename]
-                        if entry['uuid'] in existing_notes_uuids:
-                            del existing_notes_uuids[entry['uuid']]
+                        if entry["uuid"] in existing_notes_uuids:
+                            del existing_notes_uuids[entry["uuid"]]
                     else:
                         # remove from existing_notes
                         if md_filename in existing_notes_filenames:
                             del existing_notes_filenames[md_filename]
-                        if entry['uuid'] in existing_notes_uuids:
-                            old_filename = existing_notes_uuids[entry['uuid']]
-                            del existing_notes_uuids[entry['uuid']]
+                        if entry["uuid"] in existing_notes_uuids:
+                            old_filename = existing_notes_uuids[entry["uuid"]]
+                            del existing_notes_uuids[entry["uuid"]]
                             if old_filename != md_filename:
-                                self.log.error(f"Note {old_filename} was renamed to {md_filename}, but not updated in existing_notes")
+                                self.log.error(
+                                    f"Note {old_filename} was renamed to {md_filename}, but not updated in existing_notes"
+                                )
                                 del existing_notes_filenames[old_filename]
             if os.path.exists(md_filename) is False and uuid_exists is False:
                 if dry_run is False:
@@ -833,8 +916,10 @@ class CalibreTools:
                 n += 1
                 if n == max_entries:
                     break
-        if len(existing_notes_filenames)>0:
-            self.log.warning(f"Found {len(existing_notes_filenames)} existing notes that are not in the library")
+        if len(existing_notes_filenames) > 0:
+            self.log.warning(
+                f"Found {len(existing_notes_filenames)} existing notes that are not in the library"
+            )
             for note in existing_notes_filenames:
                 if delete is True:
                     if dry_run is False:

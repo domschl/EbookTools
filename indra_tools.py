@@ -18,12 +18,14 @@ class IndraTools:
             elif "rows" not in table:
                 self.log.warning(f"Table {table['columns']} has no 'rows', skipping")
             elif "metadata" not in table:
-                self.log.warning(f"Table {table['columns']} has no 'metadata', skipping")
+                self.log.warning(
+                    f"Table {table['columns']} has no 'metadata', skipping"
+                )
             else:
                 self.log.warning(f"Table {table['columns']}: Invalid Table, skipping")
             return event_cnt, 0
         if len(table["columns"]) < 2:
-            self.log.warning(
+            self.log.debug(
                 f"Table {table['columns']}, {table['metadata']} has less than 2 columns, skipping"
             )
             return event_cnt, 0
@@ -69,7 +71,9 @@ class IndraTools:
                     continue
                 if len(jd_date) == 2:
                     if jd_date[1] < jd_date[0]:
-                        self.log.error(f"Table {table['columns']}: Row {row}: end-date is earlier than start-state, invalid!")
+                        self.log.error(
+                            f"Table {table['columns']}: Row {row}: end-date is earlier than start-state, invalid!"
+                        )
                         jd_date = None
                         events_skipped += 1
                         continue
@@ -84,8 +88,12 @@ class IndraTools:
                     events_skipped += 1
                     table_sorted = False
                     if check_order is True:
-                        self.log.error(f"Table {table['columns']}: Row {row}: start-date is later than start-state of previous row, invalid order!")
-                        self.log.warning(f"{IndraTime.julian_to_string_time(last_start_time)} -> {IndraTime.julian_to_string_time(jd_date[0])}, {events_skipped}")
+                        self.log.error(
+                            f"Table {table['columns']}: Row {row}: start-date is later than start-state of previous row, invalid order!"
+                        )
+                        self.log.warning(
+                            f"{IndraTime.julian_to_string_time(last_start_time)} -> {IndraTime.julian_to_string_time(jd_date[0])}, {events_skipped}"
+                        )
                     continue
                 elif last_start_time == jd_date[0]:
                     if last_end_time is not None:
@@ -93,16 +101,20 @@ class IndraTools:
                             events_skipped += 1
                             table_sorted = False
                             if check_order is True:
-                                self.log.error(f"Table {table['columns']}: Row {row}: interval-less record is later than interval with same start-date, it should be before, invalid order!")
+                                self.log.error(
+                                    f"Table {table['columns']}: Row {row}: interval-less record is later than interval with same start-date, it should be before, invalid order!"
+                                )
                                 continue
                         elif last_end_time > jd_date[1]:
                             events_skipped += 1
                             table_sorted = False
                             if check_order is True:
-                                self.log.error(f"Table {table['columns']}: Row {row}: intervals with same start-date, record with earlier end-date after later end-date, invalid order!")
+                                self.log.error(
+                                    f"Table {table['columns']}: Row {row}: intervals with same start-date, record with earlier end-date after later end-date, invalid order!"
+                                )
                                 continue
             last_start_time = jd_date[0]
-            if len(jd_date)>1:
+            if len(jd_date) > 1:
                 last_end_time = jd_date[1]
             else:
                 last_end_time = None
@@ -119,7 +131,7 @@ class IndraTools:
                 jdi += jdi
             return (jdi[0], jdi[1])
 
-        if table_sorted is False:            
+        if table_sorted is False:
             sorted_table = sorted(table["rows"], key=jd_str_interval_sorter)
             print()
             print("-----------------------------------------------------------------")
@@ -133,6 +145,7 @@ class IndraTools:
             else:
                 ls = jds
             return (ls[0], ls[1])
+
         # Sort
         self.events = sorted(self.events, key=lambda x: jd_interval_sorter(x[0]))
         return event_cnt, events_skipped
@@ -152,13 +165,21 @@ class IndraTools:
                 print(f" {col} |", end="")
             print()
 
-    def search_events(self, time=None, domains=None, keywords=None, in_intervall=True, full_overlap=True, partial_overlap=True):
+    def search_events(
+        self,
+        time=None,
+        domains=None,
+        keywords=None,
+        in_intervall=True,
+        full_overlap=True,
+        partial_overlap=True,
+    ):
         if time is not None:
             if time.startswith('"') and time.endswith('"'):
                 time = time[1:-1]
             time = IndraTime.string_time_to_julian(time)
             start_time = time[0]
-            if len(time)> 1 and time[1] is not None :
+            if len(time) > 1 and time[1] is not None:
                 end_time = time[1]
             else:
                 end_time = start_time
@@ -179,13 +200,19 @@ class IndraTools:
                 b_keywords = False
                 for keyword in keywords:
                     for key in event[1]:  # Event data
-                        if keyword.lower() in key.lower() or keyword.lower() in event[1][key].lower():
+                        if (
+                            keyword.lower() in key.lower()
+                            or keyword.lower() in event[1][key].lower()
+                        ):
                             b_keywords = True
                             break
                     if b_keywords:
                         break
                     for key in event[2]:  # Metadata
-                        if keyword.lower() in key.lower() or keyword.lower() in event[2][key].lower():
+                        if (
+                            keyword.lower() in key.lower()
+                            or keyword.lower() in event[2][key].lower()
+                        ):
                             b_keywords = True
                             break
                     if b_keywords:
@@ -197,7 +224,9 @@ class IndraTools:
             else:
                 b_domains = False
                 for domain in domains:
-                    if domain.lower() in event[2]["domain"].lower() or IndraEvent.mqcmp(domain.lower(), event[2]["domain"].lower()):
+                    if domain.lower() in event[2]["domain"].lower() or IndraEvent.mqcmp(
+                        domain.lower(), event[2]["domain"].lower()
+                    ):
                         b_domains = True
                         break
             if not b_domains:
@@ -205,7 +234,7 @@ class IndraTools:
             if time is not None:
                 b_time = False
                 event_start = event[0][0]
-                if len(event[0])>1 and event[0][1] is not None:
+                if len(event[0]) > 1 and event[0][1] is not None:
                     event_end = event[0][1]
                 else:
                     event_end = event[0][0]
@@ -218,15 +247,23 @@ class IndraTools:
                             b_time = True
                     else:
                         if partial_overlap:
-                            if event_start >= start_time and event_start < end_time and event_end > end_time:
+                            if (
+                                event_start >= start_time
+                                and event_start < end_time
+                                and event_end > end_time
+                            ):
                                 b_time = True
-                            if event_end <= end_time and event_end > start_time and event_start < start_time:
+                            if (
+                                event_end <= end_time
+                                and event_end > start_time
+                                and event_start < start_time
+                            ):
                                 b_time = True
                 if not b_time:
                     continue
             result.append(event)
         return result
-    
+
     def print_events(self, events, filename=None, length=None, header=False):
         if filename is not None:
             f = open(filename, "w")
