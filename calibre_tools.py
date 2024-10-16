@@ -575,7 +575,7 @@ class CalibreTools:
                             f"Would delete obsolete metadata folder {koreader_metadata[title]['folder']}"
                         )
         else:
-            self.log.info(
+            self.log.debug(
                 "No Koreader metadata folders without corresponding library entry found"
             )
         # Enumerate all folders, remove empty folders
