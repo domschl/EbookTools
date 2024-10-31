@@ -157,7 +157,9 @@ if __name__ == "__main__":
         )
         calibre.load_calibre_library_metadata(progress=interactive)
         logger.info("Calibre Library loaded")
-    if do_export is True:
+    else:
+        calibre = None
+    if calibre is not None and do_export is True:
         logger.info(f"Calibre Library {calibre.calibre_path}, copying books")
         new_books, upd_books, debris = calibre.export_calibre_books(
             meta_path,
@@ -256,7 +258,7 @@ if __name__ == "__main__":
                         indra.print_events(evts)
                 else:
                     indra.print_events(evts)
-        if do_notes is True:
+        if calibre is not None and do_notes is True:
             logger.info(f"Exporting metadata to {notes_books_path}")
             n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
                 notes,

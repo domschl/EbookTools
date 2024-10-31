@@ -72,7 +72,7 @@ class KindleTools:
                     )
                 ):
                     return locale_name, locale
-        return None
+        return None, None
 
     def parse_clippings(self, clippings_text):
         self.clippings = []
@@ -121,6 +121,7 @@ class KindleTools:
                 )
             # separate the type, location, and date
             type_location_date = clipping_type_location_date.split(" | ")
+            clipping_location = None
             if len(type_location_date) == 2:
                 # No page number
                 page_no = None
@@ -170,6 +171,9 @@ class KindleTools:
                     .strip()
                     .replace(locale["info_line_type_loc_sep"], "")
                 )
+            else:
+                self.log.error(f"Could not parse type, location, date: {type_location_date}")
+                return None
             # get the text of the clipping
             clipping_text = "\n".join(lines[header_lines + 1 :]).strip()
             # convert date to ISO format

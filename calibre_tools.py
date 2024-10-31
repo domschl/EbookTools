@@ -86,8 +86,8 @@ class CalibreTools:
     def load_calibre_library_metadata(self, max_entries=None, progress=False):
         self.lib_entries = []
 
+        total_entries = 0
         if progress is True:
-            total_entries = 0
             for root, dirs, files in os.walk(self.calibre_path):
                 if ".caltrash" in root or ".calnotes" in root:
                     continue
@@ -160,7 +160,7 @@ class CalibreTools:
                                 creator.attrib["{http://www.idpf.org/2007/opf}role"]
                                 == "aut"
                             ):
-                                if "," in creator.text:
+                                if isinstance(creator.text, str) and "," in creator.text:
                                     self.log.error(
                                         f"Author name contains comma: {creator.text}"
                                     )
@@ -186,11 +186,12 @@ class CalibreTools:
                     date = metadata.find("dc:date", ns)
                     date = date.text if date is not None else None
                     # convert to datetime, add utc timezone
-                    pub_date = (
-                        datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S%z")
-                        .replace(tzinfo=timezone.utc)
-                        .isoformat()
-                    )
+                    if isinstance(date, str):
+                        pub_date = (
+                            datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S%z")
+                            .replace(tzinfo=timezone.utc)
+                            .isoformat()
+                        )
 
                     series = None
                     date_added = None
