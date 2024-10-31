@@ -3,6 +3,7 @@ import pypdf
 import zipfile
 from lxml import etree
 
+
 class Metadata:
     def __init__(self, filepath):
         self.filepath = filepath
@@ -18,7 +19,7 @@ class Metadata:
             self._get_epub()
         else:
             self.log.error(f"Unsupported file type: {self.filepath}")
-           
+
     def _get_pdf(self):
         reader = pypdf.PdfReader(self.filepath, strict=True)
         if reader.metadata is not None:
@@ -48,7 +49,7 @@ class Metadata:
             self.metadata_valid = False
             exit(-1)
             return
-      
+
         # find the contents metafile
         try:
             cfname = xpath(
@@ -60,7 +61,7 @@ class Metadata:
             self.metadata_valid = False
             exit(-1)
             return
-    
+
         # grab the metadata block from the contents metafile
         try:
             metadata = xpath(
@@ -82,18 +83,18 @@ class Metadata:
             key = str(key)
             self.metadata[key] = md[key]
         self.metadata_valid = True
-                    
+
     def get_metadata(self):
         if self.metadata_valid is False:
             self.log.error(f"Metadata not valid for {self.filepath}")
             return None
         else:
             return self.metadata
-                    
+
     def set_metadata(self, metadata):
         for key in metadata:
             self.metadata[key] = metadata[key]
-        self.metadata_valid = True    
+        self.metadata_valid = True
 
     def write_metadata():
         if self.metadata_valid is False:
