@@ -1,7 +1,7 @@
 import logging
 import pypdf
 import zipfile
-from lxml import etree
+from lxml import etree  # type: ignore
 
 
 class Metadata:
@@ -51,6 +51,7 @@ class Metadata:
             return
 
         # find the contents metafile
+        cfname = None
         try:
             cfname = xpath(
                 etree.fromstring(zip_content.read("META-INF/container.xml")),
@@ -61,7 +62,11 @@ class Metadata:
             self.metadata_valid = False
             exit(-1)
             return
-
+        if cfname is None:
+            self.log.error(f"Error reading container.xml or {self.filepath}")
+            self.metadata_valid = False
+            exit(-1)
+            return
         # grab the metadata block from the contents metafile
         try:
             metadata = xpath(
@@ -96,7 +101,7 @@ class Metadata:
             self.metadata[key] = metadata[key]
         self.metadata_valid = True
 
-    def write_metadata():
+    def write_metadata(self):
         if self.metadata_valid is False:
             self.log.error("Metadata not valid")
             return False
@@ -111,7 +116,7 @@ class Metadata:
             self.log.error(f"Metadata not valid for {self.filepath}")
             return False
         reader = pypdf.PdfReader(self.filepath)
-        writer = pdf.PdfWriter()
+        writer = pypdf.PdfWriter()
         for page in reader.pages:
             writer.add_page(page)
         writer.add_metadata(self.metadata)
