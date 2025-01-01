@@ -1,4 +1,5 @@
 import logging
+import os
 from indralib.indra_time import IndraTime  # type: ignore
 from indralib.indra_event import IndraEvent  # type: ignore
 
@@ -264,40 +265,92 @@ class IndraTools:
             result.append(event)
         return result
 
-    def print_events(self, events, filename=None, length=None, header=False):
+    def _get_date_string_from_event(self, ev):
+        date_points = []
+        for date_part in ev:
+            date_points.append(IndraTime.julian_to_string_time(date_part))
+            date = None
+        if len(date_points) == 1:
+            date = date_points[0]
+        elif len(date_points) == 2:
+            date = f"{date_points[0]} - {date_points[1]}"
+        else:
+            self.log.warning(f"Invalid date range: {date_points}")
+            date = None
+        return date
+
+    def _get_event_text(self, ev1):
+        event_text = ""
+        for ev in ev1:
+            event_text += f"{ev}: {ev1[ev]}, "
+        if len(event_text) >= 2:
+            event_text = event_text[:-2]
+        return event_text
+        
+    def print_events(self, events, filename=None, length=None, header=False, format=None):
         if filename is not None:
             f = open(filename, "w")
         else:
             f = None
-        if header is True:
-            if f is not None:
-                f.write("| Date                      | Event |\n")
-                f.write("|---------------------------|-------|\n")
-            else:
-                print("| Date                      | Event |")
-                print("|---------------------------|-------|")
-        for event in events:
-            date_points = []
-            event_text = ""
-            for ev in event[1]:
-                event_text += f"{ev}: {event[1][ev]}, "
-            event_text = event_text[:-2]
-            if length is not None and len(event_text) > length:
-                event_text = event_text[:length] + "..."
-            for date_part in event[0]:
-                date_points.append(IndraTime.julian_to_string_time(date_part))
-            date = None
-            if len(date_points) == 1:
-                date = date_points[0]
-            elif len(date_points) == 2:
-                date = f"{date_points[0]} - {date_points[1]}"
-            else:
-                self.log.warning(f"Invalid date range: {date_points}: {event_text}")
-            if date is not None:
+        if format is None:
+            if header is True:
                 if f is not None:
-                    f.write(f"| {date:24s} | {event_text} |\n")
+                    f.write("| Date                      | Event |\n")
+                    f.write("|---------------------------|-------|\n")
                 else:
-                    print(f"| {date:24s} | {event_text} |")
+                    print("| Date                      | Event |")
+                    print("|---------------------------|-------|")
+            for event in events:
+                event_text = self._get_event_text(event[1])
+                # for ev in event[1]:
+                #     event_text += f"{ev}: {event[1][ev]}, "
+                # event_text = event_text[:-2]
+                if length is not None and len(event_text) > length:
+                    event_text = event_text[:length] + "..."
+                date_text = self._get_date_string_from_event(event[0])
+                # date_points = []
+                # for date_part in event[0]:
+                #     date_points.append(IndraTime.julian_to_string_time(date_part))
+                #     date = None
+                # if len(date_points) == 1:
+                #     date = date_points[0]
+                # elif len(date_points) == 2:
+                #     date = f"{date_points[0]} - {date_points[1]}"
+                # else:
+                #     self.log.warning(f"Invalid date range: {date_points}: {event_text}")
+                if date_text is not None:
+                    if f is not None:
+                        f.write(f"| {date_text:24s} | {event_text} |\n")
+                    else:
+                        print(f"| {date_text:24s} | {event_text} |")
+        elif format == "ascii":
+            max_date = 0
+            for event in events:
+                date_text = self._get_date_string_from_event(event[0])
+                if len(date_text) > max_date:
+                    max_date = len(date_text)
+            if length is not None:
+                width = length
+            else:
+                width = os.get_terminal_size()[0]
+            if max_date + 7 + 20 > width:
+                self.log.error("More width required for output!")
+                return
+            max_text = width - max_date - 7
+            for event in events:
+                date_text = self._get_date_string_from_event(event[0])
+                event_text = self._get_event_text(event[1])
+                while len(date_text) > 0 and len(event_text) > 0:
+                    if len(event_text) > max_text:
+                        evt = event_text[:max_text]
+                        event_text = event_text[max_text:]
+                    else:
+                        evt = event_text
+                        event_text = ""
+                    if f is not None:
+                        f.write(f"| {date_text:{max_date}s} | {evt:{max_text}s} |")
+                    else:
+                        print(f"| {date_text:{max_date}s} | {evt:{max_text}s} |")
         if f is not None:
             f.close()
         return

@@ -257,7 +257,7 @@ if __name__ == "__main__":
                         print(" --------- | ----- | ---------")
                         indra.print_events(evts)
                 else:
-                    indra.print_events(evts)
+                    indra.print_events(evts, format="ascii")
         if calibre is not None and do_notes is True:
             logger.info(f"Exporting metadata to {notes_books_path}")
             n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
