@@ -336,7 +336,7 @@ class IndraTools:
                                 br0 = i
                                 br1 = i+1
                                 break
-                            if event_text[i] == '-':
+                            if event_text[i-1] == '-':
                                 br0 = i
                                 br1 = i
                                 break
