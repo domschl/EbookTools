@@ -286,7 +286,7 @@ class IndraTools:
         if len(event_text) >= 2:
             event_text = event_text[:-2]
         return event_text
-        
+
     def print_events(self, events, filename=None, length=None, header=False, format=None):
         if filename is not None:
             f = open(filename, "w")
@@ -302,22 +302,9 @@ class IndraTools:
                     print("|---------------------------|-------|")
             for event in events:
                 event_text = self._get_event_text(event[1])
-                # for ev in event[1]:
-                #     event_text += f"{ev}: {event[1][ev]}, "
-                # event_text = event_text[:-2]
                 if length is not None and len(event_text) > length:
                     event_text = event_text[:length] + "..."
                 date_text = self._get_date_string_from_event(event[0])
-                # date_points = []
-                # for date_part in event[0]:
-                #     date_points.append(IndraTime.julian_to_string_time(date_part))
-                #     date = None
-                # if len(date_points) == 1:
-                #     date = date_points[0]
-                # elif len(date_points) == 2:
-                #     date = f"{date_points[0]} - {date_points[1]}"
-                # else:
-                #     self.log.warning(f"Invalid date range: {date_points}: {event_text}")
                 if date_text is not None:
                     if f is not None:
                         f.write(f"| {date_text:24s} | {event_text} |\n")
@@ -327,7 +314,7 @@ class IndraTools:
             max_date = 0
             for event in events:
                 date_text = self._get_date_string_from_event(event[0])
-                if len(date_text) > max_date:
+                if date_text is not None and len(date_text) > max_date:
                     max_date = len(date_text)
             if length is not None:
                 width = length
@@ -340,10 +327,21 @@ class IndraTools:
             for event in events:
                 date_text = self._get_date_string_from_event(event[0])
                 event_text = self._get_event_text(event[1])
-                while len(date_text) > 0 and len(event_text) > 0:
+                while date_text is not None and (len(date_text) > 0 or len(event_text) > 0):
                     if len(event_text) > max_text:
-                        evt = event_text[:max_text]
-                        event_text = event_text[max_text:]
+                        br0 = max_text
+                        br1 = max_text
+                        for i in range(max_text, max_text // 2, -1):
+                            if event_text[i] == ' ':
+                                br0 = i
+                                br1 = i+1
+                                break
+                            if event_text[i] == '-':
+                                br0 = i
+                                br1 = i
+                                break
+                        evt = event_text[:br0]
+                        event_text = event_text[br1:]
                     else:
                         evt = event_text
                         event_text = ""
@@ -351,6 +349,7 @@ class IndraTools:
                         f.write(f"| {date_text:{max_date}s} | {evt:{max_text}s} |")
                     else:
                         print(f"| {date_text:{max_date}s} | {evt:{max_text}s} |")
+                    date_text = ""
         if f is not None:
             f.close()
         return
