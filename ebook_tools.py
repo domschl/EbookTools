@@ -61,14 +61,21 @@ if __name__ == "__main__":
         "--domains",
         type=str,
         default="",
-        help="Restrict search domains to list of space separated [Indra-]domains",
+        help="Restrict search domains to list of space separated [Indra-]domains, leading '!' used for exclusion (negation)",
     )
     parser.add_argument(
         "-k",
         "--keywords",
         type=str,
         default="",
-        help="Restrict search to list of space separated keywords",
+        help="Restrict search to list of space separated keywords, leading '!' used for exclusion (negation)",
+    )
+    parser.add_argument(
+        "-f",
+        "--format",
+        type=str,
+        default="ascii",
+        help="Format for timeline table output: none (markdown) or ascii (default)",
     )
     parser.add_argument(
         "-V", "--vacuum", action="store_true", help="Show possible debris"
@@ -206,6 +213,10 @@ if __name__ == "__main__":
                 f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes, skipped {skipped_cnt}"
             )
             if do_timeline is True:
+                if args.format.lower() != "ascii":
+                    format = None
+                else:
+                    format = "ascii"
                 time_par = args.time
                 if time_par is not None:
                     if time_par == "":
@@ -233,7 +244,7 @@ if __name__ == "__main__":
                 if time_par is not None:
                     if len(evts) > 0 and time_par is not None:
                         print(" --------- < ----- > ---------")
-                        indra.print_events(evts)
+                        indra.print_events(evts, format=format)
                     evts = indra.search_events(
                         time=time_par,
                         domains=domains_par,
@@ -244,7 +255,7 @@ if __name__ == "__main__":
                     )
                     if len(evts) > 0:
                         print(" --------- <| ----- |> ---------")
-                        indra.print_events(evts)
+                        indra.print_events(evts, format=format)
                     evts = indra.search_events(
                         time=time_par,
                         domains=domains_par,
@@ -255,9 +266,9 @@ if __name__ == "__main__":
                     )
                     if len(evts) > 0:
                         print(" --------- | ----- | ---------")
-                        indra.print_events(evts)
+                        indra.print_events(evts, format=format)
                 else:
-                    indra.print_events(evts, format="ascii")
+                    indra.print_events(evts, format=format)
         if calibre is not None and do_notes is True:
             logger.info(f"Exporting metadata to {notes_books_path}")
             n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(

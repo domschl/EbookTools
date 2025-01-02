@@ -199,7 +199,11 @@ class IndraTools:
                 b_keywords = True
             else:
                 b_keywords = False
+                pos_key = False
                 for keyword in keywords:
+                    if keyword.startswith("!"):
+                        continue
+                    pos_key = True
                     for key in event[1]:  # Event data
                         if (
                             keyword.lower() in key.lower()
@@ -218,18 +222,63 @@ class IndraTools:
                             break
                     if b_keywords:
                         break
+                if pos_key is False:
+                    b_keywords = True
+                if b_keywords is True:
+                    for keyword in keywords:
+                        if keyword.startswith("!") is False:
+                            continue
+                        else:
+                            keyword = keyword[1:]
+                        for key in event[1]:  # Event data
+                            if (
+                                keyword.lower() in key.lower()
+                                or keyword.lower() in event[1][key].lower()
+                            ):
+                                b_keywords = False
+                                break
+                        if b_keywords is False:
+                            break
+                        for key in event[2]:  # Metadata
+                            if (
+                                keyword.lower() in key.lower()
+                                or keyword.lower() in event[2][key].lower()
+                            ):
+                                b_keywords = False
+                                break
+                        if b_keywords is False:
+                            break
             if not b_keywords:
                 continue
             if domains is None:
                 b_domains = True
             else:
                 b_domains = False
+                pos_dom = False
                 for domain in domains:
+                    if domain.startswith("!"):
+                        continue
+                    pos_dom = True
                     if domain.lower() in event[2]["domain"].lower() or IndraEvent.mqcmp(
                         domain.lower(), event[2]["domain"].lower()
                     ):
                         b_domains = True
                         break
+                if pos_dom is False:
+                    b_domains = True
+                if b_domains is True:
+                    for domain in domains:
+                        if domain.startswith("!") is False:
+                            continue
+                        else:
+                            domain = domain[1:]
+                        if domain.lower() in event[2][
+                            "domain"
+                        ].lower() or IndraEvent.mqcmp(
+                            domain.lower(), event[2]["domain"].lower()
+                        ):
+                            b_domains = False
+                            break
             if not b_domains:
                 continue
             if time is not None:
@@ -287,7 +336,9 @@ class IndraTools:
             event_text = event_text[:-2]
         return event_text
 
-    def print_events(self, events, filename=None, length=None, header=False, format=None):
+    def print_events(
+        self, events, filename=None, length=None, header=False, format=None
+    ):
         if filename is not None:
             f = open(filename, "w")
         else:
@@ -327,16 +378,18 @@ class IndraTools:
             for event in events:
                 date_text = self._get_date_string_from_event(event[0])
                 event_text = self._get_event_text(event[1])
-                while date_text is not None and (len(date_text) > 0 or len(event_text) > 0):
+                while date_text is not None and (
+                    len(date_text) > 0 or len(event_text) > 0
+                ):
                     if len(event_text) > max_text:
                         br0 = max_text
                         br1 = max_text
                         for i in range(max_text, max_text // 2, -1):
-                            if event_text[i] == ' ':
+                            if event_text[i] == " ":
                                 br0 = i
-                                br1 = i+1
+                                br1 = i + 1
                                 break
-                            if event_text[i-1] == '-':
+                            if event_text[i - 1] == "-":
                                 br0 = i
                                 br1 = i
                                 break
