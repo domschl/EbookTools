@@ -3,14 +3,17 @@ import logging
 import xml.etree.ElementTree as ET
 import datetime
 from datetime import timezone
+import time
 import hashlib
 import shutil
 import json
 import unicodedata
 import zipfile
+import zlib
 import base64
 from PIL import Image  # type: ignore
 from bs4 import BeautifulSoup  # type:ignore ## pip install beautifulsoup4
+import re
 
 from ebook_utils import sanitized_md_filename, progress_bar_string
 from calibre_tools_localization import calibre_prefixes
@@ -45,13 +48,21 @@ class CalibreTools:
         self.calibre_path = cal_path
 
     @staticmethod
-    def _get_sha256(file_path):
+    def _get_sha256(file_path): 
         sha256 = hashlib.sha256()
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
                 sha256.update(chunk)
         return sha256.hexdigest()
 
+    @staticmethod
+    def _get_crc32(file_path):
+        crc32 = 0
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                crc32 = crc32 ^ zlib.crc32(chunk)
+        return crc32
+    
     @staticmethod
     def _is_number(s):
         roman = True
@@ -83,10 +94,11 @@ class CalibreTools:
         s = unicodedata.normalize("NFC", s)
         return s
 
-    def load_calibre_library_metadata(self, max_entries=None, progress=False):
+    def load_calibre_library_metadata(self, max_entries=None, progress=False, use_sha256=False, load_text=False):
         self.lib_entries = []
 
         total_entries = 0
+        latest_mod_time = None
         if progress is True:
             for root, dirs, files in os.walk(self.calibre_path):
                 if ".caltrash" in root or ".calnotes" in root:
@@ -99,6 +111,8 @@ class CalibreTools:
                 progress = False
 
         current_entry = 0
+        start_time = time.time()
+        mean_time_per_doc = 0
         for root, dirs, files in os.walk(self.calibre_path):
             if ".caltrash" in root or ".calnotes" in root:
                 continue
@@ -108,8 +122,15 @@ class CalibreTools:
                     if progress is True:
                         current_entry += 1
                         progress_bar = progress_bar_string(current_entry, total_entries)
+                        elapsed_time = time.time() - start_time
+                        time_per_doc = elapsed_time / current_entry
+                        if mean_time_per_doc == 0:
+                            mean_time_per_doc = time_per_doc
+                        else:
+                            mean_time_per_doc = 0.9 * mean_time_per_doc + 0.1 * time_per_doc
+                        remaining_time = (total_entries - current_entry) * mean_time_per_doc
                         print(
-                            f"{progress_bar} {current_entry}/{total_entries}", end="\r"
+                            f"{progress_bar} {current_entry}/{total_entries}, dt={mean_time_per_doc:.4f}, remaining: {remaining_time:.1f} sec.    ", end="\r"
                         )
 
                     title = None
@@ -131,6 +152,10 @@ class CalibreTools:
 
                     # Read metadata.opf into python object using etree ET
                     filename = os.path.join(root, file)
+                    # Get modification time
+                    mod_time = os.path.getmtime(filename)
+                    if latest_mod_time is None or mod_time > latest_mod_time:
+                        latest_mod_time = mod_time
                     root_xml = ET.parse(filename).getroot()
                     # Namespace map
                     ns = {
@@ -270,22 +295,38 @@ class CalibreTools:
                     exts = [".pdf", ".epub", ".md", ".txt"]
                     docs = []
                     formats = []
+                    doc_text = None
                     for doc in files:
                         if doc.endswith(tuple(exts)):
                             doc_full_name = os.path.join(root, doc)
                             # add extension to formats;
-                            formats.append(doc.split(".")[-1])
-                            # calculate size and hash (sha256):
+                            extension = doc.split(".")[-1]
+                            formats.append(extension)
+                            if load_text is True and extension == "txt":
+                                with open(doc_full_name, "r") as f:
+                                    doc_text = f.read()
                             size = os.path.getsize(doc_full_name)
-                            hash = CalibreTools._get_sha256(doc_full_name)
+                            mod_time = os.path.getmtime(doc_full_name)
+                            if mod_time > latest_mod_time:
+                                latest_mod_time = mod_time
+                            if use_sha256 is False:
+                                hash = CalibreTools._get_crc32(doc_full_name)
+                                hash_algo = "crc32"
+                            else:
+                                hash = CalibreTools._get_sha256(doc_full_name)
+                                hash_algo = "sha256"
                             docs.append(
                                 {
                                     "path": doc_full_name,
                                     "name": doc,
                                     "size": size,
                                     "hash": hash,
+                                    "hash_algo": hash_algo,
+                                    "mod_time": mod_time,
                                 }
                             )
+                    if doc_text is not None:
+                        entry["doc_text"] = doc_text
                     entry["docs"] = docs
                     entry["formats"] = formats
                     short_title = entry["title_sort"]
@@ -356,8 +397,8 @@ class CalibreTools:
                     self.log.debug(f"Added entry: {entry['title']}")
                     if max_entries is not None and len(self.lib_entries) >= max_entries:
                         self.log.warning(f"Reached max entries {max_entries}")
-                        return self.lib_entries
-        return self.lib_entries
+                        return latest_mod_time
+        return latest_mod_time
 
     def check_epub_calibre_bookmarks(self, epub_path, entry, dry_run=False):
         # Open epub and look if META-INF/calibre_bookmarks.txt exists
@@ -422,6 +463,33 @@ class CalibreTools:
             else:
                 entry["calibre_bookmarks"] = []
 
+    def find_date_references(self, text):
+        # Search for years of form 19xx, 20xx, 21xx in text, safe the surrounding -100 to + 20 chars in array with tuple (year, context):
+        years = []
+        # Use regex for search:
+        year = re.compile(r"\b(19\d{2}|20\d{2}|21\d{2})\b")
+        for match in year.finditer(text):
+            start = match.start()
+            end = match.end()
+            start = max(0, start - 20)
+            end = min(len(text), end + 10)
+            context = text[start:end].replace("\n", " ").replace("\r", " ").replace("\t", " ")
+            years.append((match.group(), context))
+            # print(f"Found year: {match.group()} in context: {context}")
+        # sort by year
+        years.sort(key=lambda x: x[0])
+        return years
+    
+    def find_all_dates_in_lib(self):
+        dates = {}
+        for entry in self.lib_entries:
+            if "doc_text" in entry:
+                book_dates = self.find_date_references(entry["doc_text"])
+                # print(f"Found {len(book_dates)} dates in {entry['title']}")
+                if len(book_dates) > 0:
+                    dates[entry["title"]] = book_dates
+        return dates
+    
     def export_calibre_books(
         self,
         target_path,
@@ -515,12 +583,22 @@ class CalibreTools:
                         entry["repo_path"] = []
                     entry["repo_path"].append(doc_name)
                 else:
-                    # Check sha256:
-                    sha256 = CalibreTools._get_sha256(doc_name)
-                    if sha256 != doc["hash"]:
-                        self.log.warning(
-                            f"SHA256 changed for {doc['name']} from {doc['hash']} to {sha256}"
-                        )
+                    doc_changed = False
+                    if 'hash_algo' in doc and doc['hash_algo'] == 'crc32':
+                        crc32 = CalibreTools._get_crc32(doc_name)
+                        if crc32 != doc["hash"]:
+                            self.log.warning(
+                                f"CRC32 changed for {doc['name']} from {doc['hash']} to {crc32}"
+                            )
+                            doc_changed = True
+                    else:
+                        sha256 = CalibreTools._get_sha256(doc_name)
+                        if sha256 != doc["hash"]:
+                            self.log.warning(
+                                f"SHA256 changed for {doc['name']} from {doc['hash']} to {sha256}"
+                            )
+                            doc_changed = True
+                    if doc_changed:
                         updated = True
                         upd_docs += 1
                         upd_doc_names.append(doc_name)
