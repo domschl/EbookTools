@@ -1,5 +1,6 @@
 import logging
 import os
+from rich import print as rprint
 from indralib.indra_time import IndraTime  # type: ignore
 from indralib.indra_event import IndraEvent  # type: ignore
 
@@ -210,6 +211,8 @@ class IndraTools:
                             or keyword.lower() in event[1][key].lower()
                         ):
                             b_keywords = True
+                        else:
+                            b_keywords = False
                             break
                     if b_keywords:
                         break
@@ -219,8 +222,10 @@ class IndraTools:
                             or keyword.lower() in event[2][key].lower()
                         ):
                             b_keywords = True
+                        else:
+                            b_keywords = False
                             break
-                    if b_keywords:
+                    if b_keywords is False:
                         break
                 if pos_key is False:
                     b_keywords = True
@@ -337,7 +342,13 @@ class IndraTools:
         return event_text
 
     def print_events(
-        self, events, filename=None, length=None, header=False, format=None
+        self,
+        events,
+        filename=None,
+        length=None,
+        header=False,
+        format=None,
+        emph_words=[],
     ):
         if filename is not None:
             f = open(filename, "w")
@@ -401,7 +412,33 @@ class IndraTools:
                     if f is not None:
                         f.write(f"| {date_text:{max_date}s} | {evt:{max_text}s} |")
                     else:
-                        print(f"| {date_text:{max_date}s} | {evt:{max_text}s} |")
+                        sep = "┇"
+                        ec = 4
+                        max2 = max_text
+                        for ew in emph_words:
+                            ew = ew.lower()
+                            evtl = evt.lower()
+                            ind = evtl.find(ew)
+                            evtn = evt
+                            if ind != -1:
+                                evtn = (
+                                    evt[:ind]
+                                    + f"[color({ec})]"
+                                    + evt[ind : ind + len(ew)]
+                                    + f"[/color({ec})]"
+                                    + evt[ind + len(ew) :]
+                                )
+                            # ewr = f"[color({ec})]{ew}[/color({ec})]"
+                            # evtn = evt.replace(ew, ewr)
+                            max2 += len(evtn) - len(evt)
+                            evt = evtn
+                        if date_text == "":
+                            bg = 231
+                        else:
+                            bg = 230
+                        rprint(
+                            f"[black on color({bg})]{sep} {date_text:{max_date}s} {sep} {evt:{max2}s} {sep}[/black on color({bg})]"
+                        )
                     date_text = ""
         if f is not None:
             f.close()

@@ -6,3 +6,4 @@ indralib >= 0.2.5
 pyyaml
 pypdf
 pycryptodome
+rich

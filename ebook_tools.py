@@ -241,10 +241,21 @@ if __name__ == "__main__":
                     full_overlap=True,
                     partial_overlap=False,
                 )
+                emph_keys = []
+                if domains_par is not None:
+                    for dom in domains_par:
+                        if dom.startswith("!"):
+                            continue
+                        emph_keys.append(dom)
+                if keywords_par is not None:
+                    for k in keywords_par:
+                        if k.startswith("!"):
+                            continue
+                        emph_keys.append(k)
                 if time_par is not None:
                     if len(evts) > 0 and time_par is not None:
                         print(" --------- < ----- > ---------")
-                        indra.print_events(evts, format=format)
+                        indra.print_events(evts, format=format, emph_words=emph_keys)
                     evts = indra.search_events(
                         time=time_par,
                         domains=domains_par,
@@ -255,7 +266,7 @@ if __name__ == "__main__":
                     )
                     if len(evts) > 0:
                         print(" --------- <| ----- |> ---------")
-                        indra.print_events(evts, format=format)
+                        indra.print_events(evts, format=format, emph_words=emph_keys)
                     evts = indra.search_events(
                         time=time_par,
                         domains=domains_par,
@@ -266,9 +277,9 @@ if __name__ == "__main__":
                     )
                     if len(evts) > 0:
                         print(" --------- | ----- | ---------")
-                        indra.print_events(evts, format=format)
+                        indra.print_events(evts, format=format, emph_words=emph_keys)
                 else:
-                    indra.print_events(evts, format=format)
+                    indra.print_events(evts, format=format, emph_words=emph_keys)
         if calibre is not None and do_notes is True:
             logger.info(f"Exporting metadata to {notes_books_path}")
             n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
