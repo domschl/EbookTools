@@ -1,4 +1,3 @@
 python-lsp-server
-ruff-lsp
-pyright
+python-ruff-lsp
 pydocstyle

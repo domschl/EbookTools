@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from rich import print as rprint
 from indralib.indra_time import IndraTime  # type: ignore
 from indralib.indra_event import IndraEvent  # type: ignore
@@ -167,6 +168,46 @@ class IndraTools:
                 print(f" {col} |", end="")
             print()
 
+    def search_keys(self, text, keys):
+        result = []
+        s_text = text.lower()
+        found = False
+        for key in keys:
+            if key.startswith("!"):
+                continue
+            if key.startswith("*"):
+                key = key[1:]
+            else:
+                key = r"\b" + key
+            if key.endswith("*"):
+                key = key[:-1]
+            else:
+                key += r"\b"
+            key = key.lower().replace("*", r".*")
+            if re.search(key, s_text):
+                result.append(key)
+                found = True
+            else:
+                found = False
+                return False
+        if found:
+            for key in keys:
+                if key.startswith("!") is False:
+                    continue
+                key = key[1:]
+                if key.startswith("*"):
+                    key = key[1:]
+                else:
+                    key = r"\b" + key
+                if key.endswith("*"):
+                    key = key[:-1]
+                else:
+                    key += r"\b"
+                key = key.lower().replace("*", r".*")
+                if re.search(key, s_text):
+                    return False
+        return found
+    
     def search_events(
         self,
         time=None,
@@ -200,58 +241,14 @@ class IndraTools:
                 b_keywords = True
             else:
                 b_keywords = False
-                pos_key = False
-                for keyword in keywords:
-                    if keyword.startswith("!"):
-                        continue
-                    pos_key = True
-                    for key in event[1]:  # Event data
-                        if (
-                            keyword.lower() in key.lower()
-                            or keyword.lower() in event[1][key].lower()
-                        ):
-                            b_keywords = True
-                        else:
-                            b_keywords = False
-                            break
-                    if b_keywords:
+                for key in event[1]:
+                    if self.search_keys(key, keywords) or self.search_keys(event[1][key], keywords):
+                        b_keywords = True
                         break
-                    for key in event[2]:  # Metadata
-                        if (
-                            keyword.lower() in key.lower()
-                            or keyword.lower() in event[2][key].lower()
-                        ):
+                if b_keywords is False:
+                    for key in event[2]:
+                        if self.search_keys(key, keywords) or self.search_keys(event[2][key], keywords):
                             b_keywords = True
-                        else:
-                            b_keywords = False
-                            break
-                    if b_keywords is False:
-                        break
-                if pos_key is False:
-                    b_keywords = True
-                if b_keywords is True:
-                    for keyword in keywords:
-                        if keyword.startswith("!") is False:
-                            continue
-                        else:
-                            keyword = keyword[1:]
-                        for key in event[1]:  # Event data
-                            if (
-                                keyword.lower() in key.lower()
-                                or keyword.lower() in event[1][key].lower()
-                            ):
-                                b_keywords = False
-                                break
-                        if b_keywords is False:
-                            break
-                        for key in event[2]:  # Metadata
-                            if (
-                                keyword.lower() in key.lower()
-                                or keyword.lower() in event[2][key].lower()
-                            ):
-                                b_keywords = False
-                                break
-                        if b_keywords is False:
                             break
             if not b_keywords:
                 continue
@@ -350,6 +347,20 @@ class IndraTools:
         format=None,
         emph_words=[],
     ):
+        emph_words_no_esc = []
+        for we in emph_words:
+            if we.startswith("*"):
+                we = we[1:]
+            if we.endswith("*"):
+                we = we[:-1]
+            if "*" in we:
+                we = we.split("*")
+                for w in we:
+                    if len(w) > 0:
+                        emph_words_no_esc.append(w)
+            else:
+                if len(we) > 0:
+                    emph_words_no_esc.append(we)
         if filename is not None:
             f = open(filename, "w")
         else:
@@ -415,30 +426,34 @@ class IndraTools:
                         sep = "┇"
                         ec = 4
                         max2 = max_text
-                        for ew in emph_words:
+                        cs0 = f"[color({ec})]"
+                        cs1 = f"[/]"
+                        for ew in emph_words_no_esc:
                             ew = ew.lower()
+                            if ew in cs0 or ew in cs1:
+                                continue
                             evtl = evt.lower()
                             ind = evtl.find(ew)
                             evtn = evt
                             if ind != -1:
                                 evtn = (
                                     evt[:ind]
-                                    + f"[color({ec})]"
+                                    + cs0
                                     + evt[ind : ind + len(ew)]
-                                    + f"[/color({ec})]"
+                                    + cs1
                                     + evt[ind + len(ew) :]
                                 )
-                            # ewr = f"[color({ec})]{ew}[/color({ec})]"
-                            # evtn = evt.replace(ew, ewr)
                             max2 += len(evtn) - len(evt)
                             evt = evtn
                         if date_text == "":
                             bg = 231
                         else:
                             bg = 230
-                        rprint(
-                            f"[black on color({bg})]{sep} {date_text:{max_date}s} {sep} {evt:{max2}s} {sep}[/black on color({bg})]"
-                        )
+                        esc_print = f"[black on color({bg})]{sep} {date_text:{max_date}s} {sep} {evt:{max2}s} {sep}[/]"
+                        try:
+                            rprint(esc_print)
+                        except Exception as e:
+                            print(f"Failed to print: >{esc_print}<, because of {e}")
                     date_text = ""
         if f is not None:
             f.close()

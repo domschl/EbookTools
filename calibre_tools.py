@@ -382,11 +382,9 @@ class CalibreTools:
                     entry["short_folder"] = f"{entry['series']}"
                     # Check if combination of short_title and short_folder is unique:
                     cmp = f"{entry['short_folder']}/{entry['short_title']}"
-                    duplicate = False
                     for ent in self.lib_entries:
                         test = f"{ent['short_folder']}/{ent['short_title']}"
                         if test == cmp:
-                            duplicate = True
                             self.log.error(
                                 f"Duplicate found: there are two instances for: {cmp}, cannot continue due to ambiguity, please rename books"
                             )
