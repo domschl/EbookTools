@@ -78,7 +78,16 @@ if __name__ == "__main__":
         help="Format for timeline table output: none (markdown) or ascii (default)",
     )
     parser.add_argument(
+        "-S",
+        '--SHA256',
+        action="store_true",
+        help="Use SHA256 for metadata comparison, default is CRC32",
+    )
+    parser.add_argument(
         "-V", "--vacuum", action="store_true", help="Show possible debris"
+    )
+    parser.add_argument(
+        "-D", "--find_dates", action="store_true", help="Find dates in notes"
     )
     # Add max_notes, number of notes processed, default=0 which is all:
     # parser.add_argument(
@@ -162,10 +171,19 @@ if __name__ == "__main__":
         logger.info(
             f"Calibre Library {calibre.calibre_path}, loading and parsing XML metadata"
         )
-        calibre.load_calibre_library_metadata(progress=interactive)
+        lastest_mod_time = calibre.load_calibre_library_metadata(progress=interactive, use_sha256=args.SHA256, load_text=args.find_dates)
         logger.info("Calibre Library loaded")
     else:
         calibre = None
+    if calibre is not None and args.find_dates is True:
+        logger.info(f"Calibre Library {calibre.calibre_path}, finding dates in notes")
+        dates = calibre.find_all_dates_in_lib()
+        logger.info(f"Found {len(dates)} dates in notes")
+        for title in dates:
+            print(f"===================== {title} =====================")
+            for date, context in dates[title]:
+                print(f"{date}: {context}")
+
     if calibre is not None and do_export is True:
         logger.info(f"Calibre Library {calibre.calibre_path}, copying books")
         new_books, upd_books, debris = calibre.export_calibre_books(
