@@ -68,7 +68,7 @@ if __name__ == "__main__":
         "--keywords",
         type=str,
         default="",
-        help="Restrict search to list of space separated keywords, leading '!' used for exclusion (negation)",
+        help="Restrict search to list of space separated keywords, leading '!' used for exclusion (negation), '*' for wildcards at beginning, middle or end of keywords. Multiple space separated keywords are combined with AND.",
     )
     parser.add_argument(
         "-f",
