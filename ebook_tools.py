@@ -68,7 +68,7 @@ if __name__ == "__main__":
         "--keywords",
         type=str,
         default="",
-        help="Restrict search to list of space separated keywords, leading '!' used for exclusion (negation), '*' for wildcards at beginning, middle or end of keywords. Multiple space separated keywords are combined with AND.",
+        help="Restrict search to list of space separated keywords, leading '!' used for exclusion (negation), '*' for wildcards at beginning, middle or end of keywords. Multiple space separated keywords are combined with AND, use '|' for OR combinations.",
     )
     parser.add_argument(
         "-f",
@@ -269,7 +269,7 @@ if __name__ == "__main__":
                     for k in keywords_par:
                         if k.startswith("!"):
                             continue
-                        emph_keys.append(k)
+                        emph_keys += k.split("|")
                 if time_par is not None:
                     if len(evts) > 0 and time_par is not None:
                         print(" --------- < ----- > ---------")

@@ -175,21 +175,26 @@ class IndraTools:
         for key in keys:
             if key.startswith("!"):
                 continue
-            if key.startswith("*"):
-                key = key[1:]
-            else:
-                key = r"\b" + key
-            if key.endswith("*"):
-                key = key[:-1]
-            else:
-                key += r"\b"
-            key = key.lower().replace("*", r".*")
-            if re.search(key, s_text):
-                result.append(key)
-                found = True
-            else:
+            or_keys = key.split("|")
+            or_found = False
+            for key in or_keys:
+                if key.startswith("*"):
+                    key = key[1:]
+                else:
+                    key = r"\b" + key
+                if key.endswith("*"):
+                    key = key[:-1]
+                else:
+                    key += r"\b"
+                key = key.lower().replace("*", r".*")
+                if re.search(key, s_text):
+                    result.append(key)
+                    or_found = True
+            if or_found is False:
                 found = False
                 return False
+            else:
+                found = True
         if found:
             for key in keys:
                 if key.startswith("!") is False:
