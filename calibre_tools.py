@@ -48,7 +48,7 @@ class CalibreTools:
         self.calibre_path = cal_path
 
     @staticmethod
-    def _get_sha256(file_path): 
+    def _get_sha256(file_path):
         sha256 = hashlib.sha256()
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
@@ -62,7 +62,7 @@ class CalibreTools:
             for chunk in iter(lambda: f.read(4096), b""):
                 crc32 = crc32 ^ zlib.crc32(chunk)
         return crc32
-    
+
     @staticmethod
     def _is_number(s):
         roman = True
@@ -365,7 +365,7 @@ class CalibreTools:
                             if p == -1:
                                 p = short_title.find("་", min_title_len, max_title_len)
                                 if p != -1:
-                                    p = p + 1  #  add 1 to include the tsheg
+                                    p = p + 1  # add 1 to include the tsheg
                             if p == -1:
                                 short_title = short_title[:max_title_len]
                             else:
@@ -477,7 +477,7 @@ class CalibreTools:
         # sort by year
         years.sort(key=lambda x: x[0])
         return years
-    
+
     def find_all_dates_in_lib(self):
         dates = {}
         for entry in self.lib_entries:
@@ -487,7 +487,7 @@ class CalibreTools:
                 if len(book_dates) > 0:
                     dates[entry["title"]] = book_dates
         return dates
-    
+
     def export_calibre_books(
         self,
         target_path,
@@ -945,7 +945,7 @@ class CalibreTools:
                     html_text = html_text.replace(token[0], token[1])
                 text = BeautifulSoup(
                     html_text, features="lxml"
-                ).get_text()  #   "html.parser").get_text()
+                ).get_text()  # "html.parser").get_text()
                 cmt = text.replace("\n", "\n> ")
                 md += f"> {cmt}\n"
             # if len(foot_tags) > 3:

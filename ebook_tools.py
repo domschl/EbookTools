@@ -54,7 +54,11 @@ if __name__ == "__main__":
         "--time",
         type=str,
         default="",
-        help="Timeline time range, can use BP (with option ka, Ma, Ga qualifiers) or BC qualifier, e.g. '10 Ma BP - 1920-03-01' or '1943-04 - 2001-12-31' or '1000 BC - 500', Date format: YYYY[-MM[-DD]] [BC] or year.fraction kya BP or year BP or year ka BP or year Ma BP or year Ga BP. Start and end date are separated by ' - ' with mandatory spaces around the dash, e.g. '10 Ma BP - 1920-03-01'. Default is all.",
+        help="Timeline time range, can use BP (with option ka, Ma, Ga qualifiers) or BC qualifier,"
+             " e.g. '10 Ma BP - 1920-03-01' or '1943-04 - 2001-12-31' or '1000 BC - 500', Date format:"
+             " YYYY[-MM[-DD]] [BC] or year.fraction kya BP or year BP or year ka BP or year Ma BP or year Ga BP."
+             " Start and end date are separated by ' - ' with mandatory spaces around the dash,"
+             " e.g. '10 Ma BP - 1920-03-01'. Default is all.",
     )
     parser.add_argument(
         "-o",
@@ -68,7 +72,9 @@ if __name__ == "__main__":
         "--keywords",
         type=str,
         default="",
-        help="Restrict search to list of space separated keywords, leading '!' used for exclusion (negation), '*' for wildcards at beginning, middle or end of keywords. Multiple space separated keywords are combined with AND, use '|' for OR combinations.",
+        help="Restrict search to list of space separated keywords, leading '!' used for exclusion (negation),"
+        " '*' for wildcards at beginning, middle or end of keywords."
+        " Multiple space separated keywords are combined with AND, use '|' for OR combinations.",
     )
     parser.add_argument(
         "-f",
