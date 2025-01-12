@@ -53,7 +53,7 @@ class KindleTools:
         if not os.path.exists(clippings_file):
             self.log.error(f"Clippings file not found: {clippings_file}")
             return None
-        text_clippings = None
+        # text_clippings = None
         with open(clippings_file, "rb") as f:
             # Kindle stupidly uses UTF-8 with BOM markers for every single entry!
             clippings_text = f.read().decode("utf-8-sig").replace("\ufeff", "")
@@ -175,7 +175,7 @@ class KindleTools:
                 self.log.error(f"Could not parse type, location, date: {type_location_date}")
                 return None
             # get the text of the clipping
-            clipping_text = "\n".join(lines[header_lines + 1 :]).strip()
+            clipping_text = "\n".join(lines[header_lines + 1:]).strip()
             # convert date to ISO format
             if locale_name == "en":
                 # Tuesday, 28 March 2023 13:48:18

@@ -212,7 +212,7 @@ class IndraTools:
                 if re.search(key, s_text):
                     return False
         return found
-    
+
     def search_events(
         self,
         time=None,
@@ -432,7 +432,7 @@ class IndraTools:
                         ec = 4
                         max2 = max_text
                         cs0 = f"[color({ec})]"
-                        cs1 = f"[/]"
+                        cs1 = "[/]"
                         for ew in emph_words_no_esc:
                             ew = ew.lower()
                             if ew in cs0 or ew in cs1:
@@ -444,9 +444,9 @@ class IndraTools:
                                 evtn = (
                                     evt[:ind]
                                     + cs0
-                                    + evt[ind : ind + len(ew)]
+                                    + evt[ind: ind + len(ew)]
                                     + cs1
-                                    + evt[ind + len(ew) :]
+                                    + evt[ind + len(ew):]
                                 )
                             max2 += len(evtn) - len(evt)
                             evt = evtn
