@@ -127,7 +127,12 @@ class CalibreTools:
                         if mean_time_per_doc == 0:
                             mean_time_per_doc = time_per_doc
                         else:
-                            mean_time_per_doc = 0.9 * mean_time_per_doc + 0.1 * time_per_doc
+                            n0 = current_entry
+                            if n0 > 500:
+                                n0 = 500
+                            f1 = 1.0 / n0
+                            f2 = 1.0 - f1
+                            mean_time_per_doc = f2 * mean_time_per_doc + f1 * time_per_doc
                         remaining_time = (total_entries - current_entry) * mean_time_per_doc
                         print(
                             f"{progress_bar} {current_entry}/{total_entries}, dt={mean_time_per_doc:.4f}, remaining: {remaining_time:.1f} sec.    ", end="\r"
