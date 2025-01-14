@@ -1,3 +1,4 @@
 python-lsp-server
-python-ruff-lsp
+ruff
+jedi-language-server
 pydocstyle
