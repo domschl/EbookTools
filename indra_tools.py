@@ -200,6 +200,7 @@ class IndraTools:
                 if key.startswith("!") is False:
                     continue
                 key = key[1:]
+                print(f"Neg.Key: {key}")
                 if key.startswith("*"):
                     key = key[1:]
                 else:
@@ -246,15 +247,14 @@ class IndraTools:
                 b_keywords = True
             else:
                 b_keywords = False
-                for key in event[1]:
-                    if self.search_keys(key, keywords) or self.search_keys(event[1][key], keywords):
-                        b_keywords = True
-                        break
-                if b_keywords is False:
-                    for key in event[2]:
-                        if self.search_keys(key, keywords) or self.search_keys(event[2][key], keywords):
-                            b_keywords = True
-                            break
+                
+                event_keys = []
+                for k in event[1]:
+                    event_keys += [k, event[1][k]]
+                for k in event[2]:
+                    event_keys += [k, event[2][k]]
+                event_keys = ' '.join(event_keys)
+                b_keywords = self.search_keys(event_keys, keywords)
             if not b_keywords:
                 continue
             if domains is None:
