@@ -555,8 +555,9 @@ class CalibreTools:
                 target_existing.append(filename)
         for entry in self.lib_entries:
             folder = os.path.join(target, entry["short_folder"])
+            folder_create = False
             if not os.path.exists(folder) and dry_run is not True:
-                os.makedirs(folder)
+                folder_create = True
             short_title = entry["short_title"]
             num_docs = len(entry["docs"])
             if num_docs == 0:
@@ -568,6 +569,9 @@ class CalibreTools:
                 entry["docs"][index]["ref_name"] = ref_name
                 if ext not in format:
                     continue
+                if folder_create is True:
+                    os.makedirs(folder)
+                    folder_create = False
                 doc_name = os.path.join(folder, ref_name)
                 # normalize filenames through unicodedata decomposition and composition to avoid iCloud+AFTP Unicode encoding issues
                 doc_name = unicodedata.normalize("NFC", doc_name)

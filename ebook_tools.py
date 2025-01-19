@@ -141,6 +141,7 @@ if __name__ == "__main__":
             "calibre_path": "~/ReferenceLibrary/Calibre Library",
             "kindle_path": "~/Workbench/KindleClippings",
             "meta_path": "~/MetaLibrary",
+            "book_text_lib": "~/BookTextLibrary",
             "notes_path": "~/Notes",
             "notes_books_subfolder": "Books",
             "export_formats": ["epub", "pdf"],
@@ -158,6 +159,7 @@ if __name__ == "__main__":
             calibre_path = os.path.expanduser(config["calibre_path"])
             kindle_path = os.path.expanduser(config["kindle_path"])
             meta_path = os.path.expanduser(config["meta_path"])
+            book_text_lib = os.path.expanduser(config["book_text_lib"])
             notes_path = os.path.expanduser(config["notes_path"])
             notes_books_path = os.path.join(notes_path, config["notes_books_subfolder"])
             export_formats = config["export_formats"]
@@ -202,6 +204,14 @@ if __name__ == "__main__":
         logger.info(
             f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"
         )
+        if book_text_lib is not None and book_text_lib != "" and os.path.exists(book_text_lib):
+            txt_books, upd_txt_books, txt_debris = calibre.export_calibre_books(
+                book_text_lib,
+                format=".txt",
+                dry_run=dry_run,
+                delete=delete,
+                vacuum=args.vacuum,
+            )
     if do_notes is True or do_indra is True:
         logger.info(f"Loading notes from {notes_path}")
         notes = MdTools(
