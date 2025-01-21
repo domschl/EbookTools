@@ -247,7 +247,6 @@ class IndraTools:
                 b_keywords = True
             else:
                 b_keywords = False
-                
                 event_keys = []
                 for k in event[1]:
                     event_keys += [k, event[1][k]]

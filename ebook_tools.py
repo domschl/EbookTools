@@ -5,6 +5,7 @@ import sys
 import os
 import json
 import argparse
+import re
 
 from calibre_tools import CalibreTools
 from kindle_tools import KindleTools
@@ -47,7 +48,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "action",
         nargs="*",
-        help="Action: export, notes, kindle, indra, meta, timeline",
+        help="Action: export, notes, kindle, indra, meta, timeline, bookdates",
     )
     parser.add_argument(
         "-t",
@@ -115,6 +116,7 @@ if __name__ == "__main__":
     do_indra = "indra" in args.action
     do_meta = "meta" in args.action
     do_timeline = "timeline" in args.action
+    do_bookdates = "bookdates" in args.action
 
     if args.execute is False:
         dry_run = True
@@ -125,6 +127,7 @@ if __name__ == "__main__":
         and do_kindle is False
         and do_indra is False
         and do_meta is False
+        and do_bookdates is False
     ):
         logger.error("No action specified, exiting, use -h for help")
         exit(1)
@@ -365,3 +368,34 @@ if __name__ == "__main__":
                         m_oks += 1
                         # print(meta)
         logger.info(f"Processed metadata, ok={m_oks}, errors={m_errs}")
+    if do_bookdates is True:
+        if book_text_lib is not None and os.path.exists(book_text_lib):
+            logger.info(f"Reading all books from {book_text_lib}")
+            text_lib = {}
+            n_books = 0
+            for root, dirs, files in os.walk(book_text_lib):
+                for file in files:
+                    if file.endswith(".txt"):
+                        file_path = os.path.join(root, file)
+                        text_lib[file_path] = {}
+                        with open(file_path, 'r') as f:
+                            # print(f"Reading: {file_path}")
+                            text_lib[file_path]['text'] = f.read()
+                            n_books += 1
+            logger.info(f"{n_books} books read")
+            date_regex = r"\b(18|19|20)\d{2}\b"
+            n_dates = 0
+            logger.info("Searching year-date occurrences...")
+            for book_path in text_lib:
+                text = text_lib[book_path]['text']
+                # Find all occurences of date_regex in text:
+                dates = [(match.start(), match.group()) for match in re.finditer(date_regex, text)]
+                text_lib[book_path]['dates'] = dates
+                n_dates += len(dates)
+                if len(dates) > 0:
+                    sample = dates[0]
+                    snip = text[sample[0]-30:sample[0]+10].replace("\n", " ")
+                    print(f"{sample[1]}: [{snip}] in {book_path}")
+            logger.info(f"{n_dates} dates found")
+        else:
+            logger.error(f"Can't access the book library texts at {book_text_lib}")
