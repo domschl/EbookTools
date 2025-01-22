@@ -93,9 +93,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "-V", "--vacuum", action="store_true", help="Show possible debris"
     )
-    parser.add_argument(
-        "-D", "--find_dates", action="store_true", help="Find dates in notes"
-    )
     # Add max_notes, number of notes processed, default=0 which is all:
     # parser.add_argument(
     #     "-m",
@@ -117,6 +114,7 @@ if __name__ == "__main__":
     do_meta = "meta" in args.action
     do_timeline = "timeline" in args.action
     do_bookdates = "bookdates" in args.action
+    do_date_stuff = (do_bookdates is True or do_timeline is True)
 
     if args.execute is False:
         dry_run = True
@@ -177,23 +175,20 @@ if __name__ == "__main__":
             )
             exit(1)
 
-    if do_export is True or do_notes is True:
+    if do_date_stuff is True:
+        timelines = TimeLines()
+    else:
+        timelines = None
+
+    if do_export is True or do_notes is True or do_date_stuff is True:
         calibre = CalibreTools(calibre_path=calibre_path)
         logger.info(
             f"Calibre Library {calibre.calibre_path}, loading and parsing XML metadata"
         )
-        lastest_mod_time = calibre.load_calibre_library_metadata(progress=interactive, use_sha256=args.SHA256, load_text=args.find_dates)
+        lastest_mod_time = calibre.load_calibre_library_metadata(progress=interactive, use_sha256=args.SHA256, load_text=do_date_stuff)
         logger.info("Calibre Library loaded")
     else:
         calibre = None
-    if calibre is not None and args.find_dates is True:
-        logger.info(f"Calibre Library {calibre.calibre_path}, finding dates in notes")
-        dates = calibre.find_all_dates_in_lib()
-        logger.info(f"Found {len(dates)} dates in notes")
-        for title in dates:
-            print(f"===================== {title} =====================")
-            for date, context in dates[title]:
-                print(f"{date}: {context}")
 
     if calibre is not None and do_export is True:
         logger.info(f"Calibre Library {calibre.calibre_path}, copying books")
@@ -215,7 +210,8 @@ if __name__ == "__main__":
                 delete=delete,
                 vacuum=args.vacuum,
             )
-    if do_notes is True or do_indra is True:
+
+    if do_notes is True or do_indra is True or do_date_stuff is True:
         logger.info(f"Loading notes from {notes_path}")
         notes = MdTools(
             notes_folder=notes_path,
@@ -234,100 +230,31 @@ if __name__ == "__main__":
         logger.info(
             f"Loaded {len(notes.notes)} notes with {table_cnt} tables, {metadata_cnt} metadata tables"
         )
+    else:
+        notes = None
+
+    if do_indra is True:
         if do_indra is True:
             indra = IndraTools()
-            event_cnt = 0
-            skipped_cnt = 0
-            for note_name in notes.notes:
-                note = notes.notes[note_name]
-                for table in note["tables"]:
-                    new_evs, new_skipped = indra.add_events_from_table(
-                        table, check_order=True
-                    )
-                    event_cnt += new_evs
-                    skipped_cnt += new_skipped
-            logger.info(
-                f"Found {len(indra.events)} (added {event_cnt}) Indra events in notes, skipped {skipped_cnt}"
-            )
-            if do_timeline is True:
-                if args.format.lower() != "ascii":
-                    format = None
-                else:
-                    format = "ascii"
-                time_par = args.time
-                if time_par is not None:
-                    if time_par == "":
-                        time_par = None
-                domains_par = args.domains
-                if domains_par is not None:
-                    if domains_par == "":
-                        domains_par = None
-                    else:
-                        domains_par = domains_par.split(" ")
-                keywords_par = args.keywords
-                if keywords_par is not None:
-                    if keywords_par == "":
-                        keywords_par = None
-                    else:
-                        keywords_par = keywords_par.split(" ")
-                evts = indra.search_events(
-                    time=time_par,
-                    domains=domains_par,
-                    keywords=keywords_par,
-                    in_intervall=False,
-                    full_overlap=True,
-                    partial_overlap=False,
-                )
-                emph_keys = []
-                if domains_par is not None:
-                    for dom in domains_par:
-                        if dom.startswith("!"):
-                            continue
-                        emph_keys.append(dom)
-                if keywords_par is not None:
-                    for k in keywords_par:
-                        if k.startswith("!"):
-                            continue
-                        emph_keys += k.split("|")
-                if time_par is not None:
-                    if len(evts) > 0 and time_par is not None:
-                        print(" --------- < ----- > ---------")
-                        indra.print_events(evts, format=format, emph_words=emph_keys)
-                    evts = indra.search_events(
-                        time=time_par,
-                        domains=domains_par,
-                        keywords=keywords_par,
-                        in_intervall=False,
-                        full_overlap=False,
-                        partial_overlap=True,
-                    )
-                    if len(evts) > 0:
-                        print(" --------- <| ----- |> ---------")
-                        indra.print_events(evts, format=format, emph_words=emph_keys)
-                    evts = indra.search_events(
-                        time=time_par,
-                        domains=domains_par,
-                        keywords=keywords_par,
-                        in_intervall=True,
-                        full_overlap=False,
-                        partial_overlap=False,
-                    )
-                    if len(evts) > 0:
-                        print(" --------- | ----- | ---------")
-                        indra.print_events(evts, format=format, emph_words=emph_keys)
-                else:
-                    indra.print_events(evts, format=format, emph_words=emph_keys)
-        if calibre is not None and do_notes is True:
-            logger.info(f"Exporting metadata to {notes_books_path}")
-            n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
-                notes,
-                notes_books_path,
-                dry_run=dry_run,
-                delete=delete,
-            )
-            logger.info(
-                f"Exported {n} books to {notes_books_path}, content of {content_updates} books updated"
-            )
+
+    if do_date_stuff is True:
+        if calibre is not None:
+            timelines.add_book_events(calibre.lib_entries)
+        if notes is not None:
+            timelines.add_notes_table_events(notes.notes, indra, do_timeline, args.format.lower(), args.time, args.domains, args.keywords)
+
+    if calibre is not None and do_notes is True:
+        logger.info(f"Exporting metadata to {notes_books_path}")
+        n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
+            notes,
+            notes_books_path,
+            dry_run=dry_run,
+            delete=delete,
+        )
+        logger.info(
+            f"Exported {n} books to {notes_books_path}, content of {content_updates} books updated"
+        )
+
     if do_kindle is True:
         kindle = KindleTools()
         clippings = []
@@ -369,7 +296,4 @@ if __name__ == "__main__":
                         # print(meta)
         logger.info(f"Processed metadata, ok={m_oks}, errors={m_errs}")
     if do_bookdates is True:
-        if book_text_lib is not None and os.path.exists(book_text_lib):
-            text_books = TimeLines(book_text_lib)
-        else:
-            logger.error(f"Can't access the book library texts at {book_text_lib}")
+        logger.error(f"Can't access the book library texts at {book_text_lib}")

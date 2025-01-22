@@ -94,7 +94,7 @@ class CalibreTools:
         s = unicodedata.normalize("NFC", s)
         return s
 
-    def load_calibre_library_metadata(self, max_entries=None, progress=False, use_sha256=False, load_text=False):
+    def load_calibre_library_metadata(self, max_entries=None, progress=False, use_sha256=False, load_text=True):
         self.lib_entries = []
 
         total_entries = 0
@@ -465,33 +465,6 @@ class CalibreTools:
                     reader.close()
             else:
                 entry["calibre_bookmarks"] = []
-
-    def find_date_references(self, text):
-        # Search for years of form 19xx, 20xx, 21xx in text, safe the surrounding -100 to + 20 chars in array with tuple (year, context):
-        years = []
-        # Use regex for search:
-        year = re.compile(r"\b(19\d{2}|20\d{2}|21\d{2})\b")
-        for match in year.finditer(text):
-            start = match.start()
-            end = match.end()
-            start = max(0, start - 20)
-            end = min(len(text), end + 10)
-            context = text[start:end].replace("\n", " ").replace("\r", " ").replace("\t", " ")
-            years.append((match.group(), context))
-            # print(f"Found year: {match.group()} in context: {context}")
-        # sort by year
-        years.sort(key=lambda x: x[0])
-        return years
-
-    def find_all_dates_in_lib(self):
-        dates = {}
-        for entry in self.lib_entries:
-            if "doc_text" in entry:
-                book_dates = self.find_date_references(entry["doc_text"])
-                # print(f"Found {len(book_dates)} dates in {entry['title']}")
-                if len(book_dates) > 0:
-                    dates[entry["title"]] = book_dates
-        return dates
 
     def export_calibre_books(
         self,
