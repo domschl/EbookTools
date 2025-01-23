@@ -13,7 +13,6 @@ import zlib
 import base64
 from PIL import Image  # type: ignore
 from bs4 import BeautifulSoup  # type:ignore ## pip install beautifulsoup4
-import re
 
 from ebook_utils import sanitized_md_filename, progress_bar_string
 from calibre_tools_localization import calibre_prefixes

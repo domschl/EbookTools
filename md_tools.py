@@ -1,7 +1,6 @@
 import os
 import logging
 
-# import copy
 import yaml  # type: ignore
 import uuid
 import subprocess  # type: ignore

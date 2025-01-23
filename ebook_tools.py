@@ -241,7 +241,8 @@ if __name__ == "__main__":
         if calibre is not None:
             timelines.add_book_events(calibre.lib_entries)
         if notes is not None:
-            timelines.add_notes_table_events(notes.notes, indra, do_timeline, args.format.lower(), args.time, args.domains, args.keywords)
+            timelines.add_notes_events(notes)
+            timelines.notes_rest(do_timeline, args.format.lower(), args.time, args.domains, args.keywords)
 
     if calibre is not None and do_notes is True:
         logger.info(f"Exporting metadata to {notes_books_path}")
