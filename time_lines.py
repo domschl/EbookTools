@@ -120,10 +120,20 @@ class TimeLines:
                 b_keywords = False
                 event_keys = []
                 for k in event[1]:
-                    event_keys += [k, event[1][k]]
+                    val = event[1][k]
+                    if val is not None:
+                        val = f"{val}"
+                        event_keys += [k, val]
                 for k in event[2]:
-                    event_keys += [k, event[2][k]]
-                event_keys = ' '.join(event_keys)
+                    val = event[2][k]
+                    if val is not None:
+                        val = f"{val}"
+                        event_keys += [k, val]
+                try:
+                    event_keys = ' '.join(event_keys)
+                except Exception as e:
+                    self.log.error(f"couldn't join [Err: {e}], event_keys: {event_keys}")
+                    exit(1)
                 b_keywords = self.search_keys(event_keys, keywords)
             if not b_keywords:
                 continue
@@ -334,6 +344,10 @@ class TimeLines:
             f.close()
         return
 
+    def date_from_text(self, snp, pramb, year):
+        jd_date = IndraTime.string_time_to_julian(year)
+        return jd_date
+
     def add_book_events(self, calibre_lib_entries):
         date_regex = r"\b(18|19|20)\d{2}\b"
         n_dates = 0
@@ -350,9 +364,13 @@ class TimeLines:
             # self.text_lib[book_path]['dates'] = dates
             n_dates += len(dates)
             if len(dates) > 0:
+                preamb = 50
+                posttxt = 20
                 for sample in dates:
-                    snip = text[sample[0]-30:sample[0]+10].replace("\n", " ")
-                    jd_date = IndraTime.string_time_to_julian(sample[1])
+                    snip = text[sample[0]-preamb:sample[0]+posttxt]
+                    for c in ["\n", "\r", "\t"]:
+                        snip = snip.replace(c, " ")
+                    jd_date = self.date_from_text(snip, preamb, sample[1])
                     metacur = book_metadata.copy()
                     metacur['position_offset'] = sample[0]
                     event = (jd_date, {'text_snip': snip}, metacur)
