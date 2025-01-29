@@ -373,7 +373,7 @@ class TimeLines:
                     jd_date = self.date_from_text(snip, preamb, sample[1])
                     metacur = book_metadata.copy()
                     metacur['position_offset'] = sample[0]
-                    event = (jd_date, {'text_snip': snip}, metacur)
+                    event = (jd_date, {'Title': metacur['short_title'], 'Text_snip': snip}, metacur)
                     self.tl_events.append(event)
                     n_dates += 1
         self.sort_tl_events()
