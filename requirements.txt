@@ -7,3 +7,5 @@ pyyaml
 pypdf
 pycryptodome
 rich
+ollama
+numpy
