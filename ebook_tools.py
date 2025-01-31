@@ -22,9 +22,9 @@ class ConfigDict(TypedDict):
      meta_path: str
      book_text_lib: str
      notes_path: str
-     notes_books_path: str
+     # notes_books_path: str
      notes_books_subfolder: str
-     embeddings_path: str
+     book_text_lib_embeddings: str
      export_formats: list[str]
      
 
@@ -152,14 +152,14 @@ if __name__ == "__main__":
         config_file = os.path.expanduser("~/.config/EbookTools/ebook_tools.json")
 
     if os.path.exists(config_file) is False:
-        default_config = {
+        default_config: ConfigDict = {
             "calibre_path": "~/ReferenceLibrary/Calibre Library",
             "kindle_path": "~/Workbench/KindleClippings",
             "meta_path": "~/MetaLibrary",
             "book_text_lib": "~/BookTextLibrary",
             "notes_path": "~/Notes",
             "notes_books_subfolder": "Books",
-            "embeddings_path": "~/BookTextLibraryEmbeddings",
+            "book_text_lib_embeddings": "~/BookTextLibraryEmbeddings",
             "export_formats": ["epub", "pdf"],
         }
         # Create dir
@@ -178,7 +178,7 @@ if __name__ == "__main__":
             book_text_lib = os.path.expanduser(config["book_text_lib"])
             notes_path = os.path.expanduser(config["notes_path"])
             notes_books_path = os.path.join(notes_path, config["notes_books_subfolder"])
-            embeddings_path: str = os.path.expanduser(config["embeddings_path"])
+            book_text_lib_embeddings: str = os.path.expanduser(config["book_text_lib_embeddings"])
             export_formats = config["export_formats"]
         except Exception as e:
             logger.error(f"Error reading config file {config_file}: {e}")
