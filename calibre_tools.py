@@ -32,11 +32,11 @@ class CalibreTools:
     - It can export metadata to markdown files so that the library of books can be referred to in markdown notes collections
     """
 
-    def __init__(self, calibre_path, calibre_library_name="Calibre_Library"):
-        self.log = logging.getLogger("CalibreTools")
-        self.calibre_library_name = calibre_library_name
+    def __init__(self, calibre_path: str, calibre_library_name: str="Calibre_Library"):
+        self.log: logging.Logger = logging.getLogger("CalibreTools")
+        self.calibre_library_name: str = calibre_library_name
         cal_path = os.path.expanduser(calibre_path)
-        self.sequence_number = 0
+        self.sequence_number: int = 0
         self.lib_entries = []
         if not os.path.exists(cal_path):
             self.log.error(f"Calibre path does not exist: {cal_path}")
@@ -44,10 +44,10 @@ class CalibreTools:
         if not os.path.exists(os.path.join(cal_path, "metadata.db")):
             self.log.error(f"Error: Calibre metadata.db does not exist at {cal_path}")
             raise ValueError(f"Calibre metadata.db does not exist at {cal_path}")
-        self.calibre_path = cal_path
+        self.calibre_path: str = cal_path
 
     @staticmethod
-    def _get_sha256(file_path):
+    def _get_sha256(file_path: str) -> str:
         sha256 = hashlib.sha256()
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
@@ -55,7 +55,7 @@ class CalibreTools:
         return sha256.hexdigest()
 
     @staticmethod
-    def _get_crc32(file_path):
+    def _get_crc32(file_path: str) -> int:
         crc32 = 0
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
@@ -63,7 +63,7 @@ class CalibreTools:
         return crc32
 
     @staticmethod
-    def _is_number(s):
+    def _is_number(s: str) -> bool:
         roman = True
         arabic = True
         for c in s.strip():
@@ -76,7 +76,7 @@ class CalibreTools:
         return True
 
     @staticmethod
-    def _clean_filename(s):
+    def _clean_filename(s: str) -> str:
         bad_chars = ["<", ">", ":", '"', "/", "\\", "|", "?", "*"]
         for c in bad_chars:
             s = s.replace(c, ",")
@@ -99,7 +99,7 @@ class CalibreTools:
         total_entries = 0
         latest_mod_time = None
         if progress is True:
-            for root, dirs, files in os.walk(self.calibre_path):
+            for root, _dirs, files in os.walk(self.calibre_path):
                 if ".caltrash" in root or ".calnotes" in root:
                     continue
                 for file in files:

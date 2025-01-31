@@ -1,4 +1,4 @@
-def sanitized_md_filename(name):
+def sanitized_md_filename(name: str) -> str:
     bad_chars = "\\/:*?\"<>|.`'\n\r\t[]{}()&^%$#@!~"
     for char in bad_chars:
         name = name.replace(char, "_")
@@ -10,8 +10,8 @@ def sanitized_md_filename(name):
 
 
 def progress_bar_string(
-    progress, max_progress, bar_length=20, start_bracket="⦃", end_bracket="⦄"
-):
+        progress: int, max_progress:int, bar_length: int=20, start_bracket: str | None="⦃", end_bracket: str | None="⦄"
+) -> str:
     """Create a Unicode progress bar string
 
     This creates a string of length bar_length with a Unicode progress bar using

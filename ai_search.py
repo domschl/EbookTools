@@ -123,7 +123,7 @@ class EmbeddingSearch:
             return
         for desc in self.texts:
             if desc.startswith(lib_desc):
-                if 'embedding' not in self.texts[desc]:
+                if self.texts[desc]['embedding_generator'] == "":
                     text: str = self.texts[desc]['text']
                     text_chunks = [self.get_chunk(text, i) for i in range(len(text) // chunk_size)]
                     # embeddings: np.ndarray([], dtype=np.float32)
@@ -157,18 +157,18 @@ class EmbeddingSearch:
             n = self.epsilon
         return float(m / n)
 
-    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, chunk_size: int=2048):
+    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, chunk_size: int=2048) -> tuple[str, int, str, float]:
         search_text = search_text[:chunk_size]
-        while len(search_text) < chunk_size:
-            search_text = " " + search_text
+        # while len(search_text) < chunk_size:
+        #     search_text = " " + search_text
         response = ollama.embed(model=model, input=search_text)
         search_embedding = np.array(response["embeddings"][0], dtype=np.float32)
-        best_doc = ""
-        best_index = -1
-        cos_val = 0
-        best_chunk = ""
+        best_doc: str = ""
+        best_index: int = -1
+        best_chunk: str = ""
+        cos_val: float = 0.0
         if self.texts is None:
-            return
+            return best_doc, best_index, best_chunk, cos_val
         for desc in self.texts:
             entry =  self.texts[desc]
             if entry['embedding'] is None:
@@ -177,10 +177,6 @@ class EmbeddingSearch:
                 continue
             for index in range(entry['embedding'].shape[0]):
                 chunk = entry['embedding'][index,:]
-                # print("Search:", list(search_embedding))
-                # print("Chunk:", list(chunk))
-                # if index == 1:
-                #     return
                 cs = self.cos_sim(search_embedding, chunk)
                 if cs > cos_val:
                     best_doc = desc

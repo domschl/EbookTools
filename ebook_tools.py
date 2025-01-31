@@ -5,6 +5,8 @@ import sys
 import os
 import json
 import argparse
+from argparse import ArgumentParser
+from typing import TypedDict
 
 from calibre_tools import CalibreTools
 from kindle_tools import KindleTools
@@ -14,83 +16,95 @@ from metadata import Metadata
 from time_lines import TimeLines
 
 
+class ConfigDict(TypedDict):
+     calibre_path: str
+     kindle_path: str
+     meta_path: str
+     book_text_lib: str
+     notes_path: str
+     notes_books_path: str
+     notes_books_subfolder: str
+     embeddings_path: str
+     export_formats: list[str]
+     
+
 if __name__ == "__main__":
     # Init logging
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Ebook Tools")
-    parser.add_argument(
+    parser: ArgumentParser = argparse.ArgumentParser(description="Ebook Tools")
+    _ = parser.add_argument(
         "-d",
         "--dry-run",
         action="store_true",
         help="Dry run, do not copy or delete files",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "-E",
         "--execute",
         action="store_true",
         help="Execute, this can DELETE files, be careful, test first with -d. Note: this option will be removed at some point and be default.",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "-x",
         "--delete",
         action="store_true",
         help="Delete files that are debris, DANGER, test first with -d",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "-np",
         "--non-interactive",
         action="store_true",
         help="Non-interactive mode, do not show progress bars",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "action",
         nargs="*",
         help="Action: export, notes, kindle, indra, meta, timeline, bookdates",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "-t",
         "--time",
         type=str,
         default="",
-        help="Timeline time range, can use BP (with option ka, Ma, Ga qualifiers) or BC qualifier,"
-             " e.g. '10 Ma BP - 1920-03-01' or '1943-04 - 2001-12-31' or '1000 BC - 500', Date format:"
-             " YYYY[-MM[-DD]] [BC] or year.fraction kya BP or year BP or year ka BP or year Ma BP or year Ga BP."
-             " Start and end date are separated by ' - ' with mandatory spaces around the dash,"
+        help="Timeline time range, can use BP (with option ka, Ma, Ga qualifiers) or BC qualifier," +\
+             " e.g. '10 Ma BP - 1920-03-01' or '1943-04 - 2001-12-31' or '1000 BC - 500', Date format:" +\
+             " YYYY[-MM[-DD]] [BC] or year.fraction kya BP or year BP or year ka BP or year Ma BP or year Ga BP." +\
+             " Start and end date are separated by ' - ' with mandatory spaces around the dash," +\
              " e.g. '10 Ma BP - 1920-03-01'. Default is all.",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "-o",
         "--domains",
         type=str,
         default="",
         help="Restrict search domains to list of space separated [Indra-]domains, leading '!' used for exclusion (negation)",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "-k",
         "--keywords",
         type=str,
         default="",
-        help="Restrict search to list of space separated keywords, leading '!' used for exclusion (negation),"
-        " '*' for wildcards at beginning, middle or end of keywords."
+        help="Restrict search to list of space separated keywords, leading '!' used for exclusion (negation)," +\
+        " '*' for wildcards at beginning, middle or end of keywords." +\
         " Multiple space separated keywords are combined with AND, use '|' for OR combinations.",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "-f",
         "--format",
         type=str,
         default="ascii",
         help="Format for timeline table output: none (markdown) or ascii (default)",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "-S",
         '--SHA256',
         action="store_true",
         help="Use SHA256 for metadata comparison, default is CRC32",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "-V", "--vacuum", action="store_true", help="Show possible debris"
     )
     # Add max_notes, number of notes processed, default=0 which is all:
@@ -104,19 +118,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Set options
-    dry_run = args.dry_run
-    delete = args.delete
-    interactive = not args.non_interactive
-    do_export = "export" in args.action
-    do_notes = "notes" in args.action
-    do_kindle = "kindle" in args.action
-    do_indra = "indra" in args.action
-    do_meta = "meta" in args.action
-    do_timeline = "timeline" in args.action
-    do_bookdates = "bookdates" in args.action
-    do_date_stuff = (do_bookdates is True or do_timeline is True)
+    dry_run: bool = args.dry_run  # pyright: ignore[reportAny]
+    delete: bool = args.delete  # pyright: ignore[reportAny]
+    interactive: bool = not args.non_interactive  # pyright: ignore[reportAny]
+    do_export: bool = "export" in args.action  # pyright: ignore[reportAny]
+    do_notes: bool = "notes" in args.action  # pyright: ignore[reportAny]
+    do_kindle: bool = "kindle" in args.action  # pyright: ignore[reportAny]
+    do_indra: bool = "indra" in args.action  # pyright: ignore[reportAny]
+    do_meta: bool = "meta" in args.action  # pyright: ignore[reportAny]
+    do_timeline: bool = "timeline" in args.action  # pyright: ignore[reportAny]
+    do_bookdates: bool = "bookdates" in args.action  # pyright: ignore[reportAny]
+    do_date_stuff: bool = (do_bookdates is True or do_timeline is True)
 
-    if args.execute is False:
+    if args.execute is False:  # pyright: ignore[reportAny]
         dry_run = True
 
     if (
@@ -145,24 +159,26 @@ if __name__ == "__main__":
             "book_text_lib": "~/BookTextLibrary",
             "notes_path": "~/Notes",
             "notes_books_subfolder": "Books",
+            "embeddings_path": "~/BookTextLibraryEmbeddings",
             "export_formats": ["epub", "pdf"],
         }
         # Create dir
         os.makedirs(os.path.dirname(config_file), exist_ok=True)
         with open(config_file, "w") as f:
-            f.write(json.dumps(default_config, indent=4))
+            _ = f.write(json.dumps(default_config, indent=4))
         logger.info(f"Config file {config_file} created, please edit it")
         exit(1)
     else:
         try:
             with open(config_file, "r") as f:
-                config = json.load(f)
-            calibre_path = os.path.expanduser(config["calibre_path"])
+                config: ConfigDict = json.load(f)
+            calibre_path: str = os.path.expanduser(config["calibre_path"])
             kindle_path = os.path.expanduser(config["kindle_path"])
             meta_path = os.path.expanduser(config["meta_path"])
             book_text_lib = os.path.expanduser(config["book_text_lib"])
             notes_path = os.path.expanduser(config["notes_path"])
             notes_books_path = os.path.join(notes_path, config["notes_books_subfolder"])
+            embeddings_path: str = os.path.expanduser(config["embeddings_path"])
             export_formats = config["export_formats"]
         except Exception as e:
             logger.error(f"Error reading config file {config_file}: {e}")
@@ -202,7 +218,7 @@ if __name__ == "__main__":
         logger.info(
             f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"
         )
-        if book_text_lib is not None and book_text_lib != "" and os.path.exists(book_text_lib):
+        if book_text_lib != "" and os.path.exists(book_text_lib):
             txt_books, upd_txt_books, txt_debris = calibre.export_calibre_books(
                 book_text_lib,
                 format=".txt",
