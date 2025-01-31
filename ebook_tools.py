@@ -25,6 +25,9 @@ class ConfigDict(TypedDict):
      # notes_books_path: str
      notes_books_subfolder: str
      book_text_lib_embeddings: str
+     embeddings_model: str
+     chunk_size: int
+     chunk_overlap: int
      export_formats: list[str]
      
 
@@ -160,6 +163,9 @@ if __name__ == "__main__":
             "notes_path": "~/Notes",
             "notes_books_subfolder": "Books",
             "book_text_lib_embeddings": "~/BookTextLibraryEmbeddings",
+             "embeddings_model": "nomic-embed-text",
+             "chunk_size": 2048,
+             "chunk_overlap": 0,
             "export_formats": ["epub", "pdf"],
         }
         # Create dir
@@ -179,6 +185,9 @@ if __name__ == "__main__":
             notes_path = os.path.expanduser(config["notes_path"])
             notes_books_path = os.path.join(notes_path, config["notes_books_subfolder"])
             book_text_lib_embeddings: str = os.path.expanduser(config["book_text_lib_embeddings"])
+            embeddings_model = config["embeddings_model"]
+            chunk_size = config["chunk_size"]
+            chunk_overlap = config["chunk_overlap"]
             export_formats = config["export_formats"]
         except Exception as e:
             logger.error(f"Error reading config file {config_file}: {e}")
