@@ -1,10 +1,11 @@
 import os
 import logging
 
-import yaml  # type: ignore
+import yaml
 import uuid
-import subprocess  # type: ignore
+import subprocess
 import datetime
+from typing import Any
 
 from ebook_utils import sanitized_md_filename, progress_bar_string
 
@@ -17,23 +18,25 @@ class MdTools:
 
     def __init__(
         self,
-        notes_folder,
-        notes_books_folder=None,
-        notes_annotations_folder=None,
-        skip_dirs=[".obsidian", "Templates", "Templater"],
-        progress=False,
-        dry_run=False,
+        notes_folder: str,
+        notes_books_folder: str,
+        notes_annotations_folder: str = "",
+        skip_dirs: list[str] = [],
+        progress: bool = False,
+        dry_run: bool = False,
     ):
-        self.log = logging.getLogger("MdTools")
-        self.dry_run = dry_run
-        self.notes_folder = notes_folder
-        if notes_books_folder is None:
+        if len(skip_dirs) == 0:
+            skip_dirs = [".obsidian", "Templates", "Templater"]
+        self.log: logging.Logger = logging.getLogger("MdTools")
+        self.dry_run: bool = dry_run
+        self.notes_folder: str = notes_folder
+        if notes_books_folder == "":
             notes_books_folder = os.path.join(notes_folder, "Books")
-        if notes_annotations_folder is None:
+        if notes_annotations_folder == "":
             notes_annotations_folder = os.path.join(notes_folder, "BookNotes")
-        self.notes_books_folder = notes_books_folder
-        self.notes_annotations_folder = notes_annotations_folder
-        self.skip_dirs = skip_dirs
+        self.notes_books_folder: str = notes_books_folder
+        self.notes_annotations_folder: str = notes_annotations_folder
+        self.skip_dirs: list[str] = skip_dirs
         if not os.path.exists(self.notes_folder):
             raise FileNotFoundError(f"Notes folder {self.notes_folder} does not exist")
         if not os.path.exists(self.notes_books_folder):
@@ -42,53 +45,53 @@ class MdTools:
         if not os.path.exists(self.notes_annotations_folder):
             os.makedirs(self.notes_annotations_folder)
             self.log.info(f"Created folder {self.notes_annotations_folder}")
-        self.progress = progress
+        self.progress: bool = progress
         self.read_notes(skip_dirs=skip_dirs, progress=progress)
 
-    def parse_frontmatter(self, txt):
-        state = 0
-        lines = txt.split("\n")
-        frontmatter = []
-        content = []
+    def parse_frontmatter(self, txt:str) -> tuple[dict[Any, Any], str]:  # pyright: ignore[reportExplicitAny]
+        state:int = 0
+        lines: list[str] = txt.split("\n")
+        frontmatter_lines: list[str] = []
+        frontmatter: str = ""
+        content_lines: list[str] = []
+        content: str = ""
         start = True
         for line in lines:
             if state == 0:
                 if line == "---" and start is True:
                     state = 1
                 else:
-                    content.append(line)
+                    content_lines.append(line)
                 start = False
             elif state == 1:
                 if line == "---":
                     state = 2
                 else:
-                    frontmatter.append(line)
+                    frontmatter_lines.append(line)
             elif state == 2:
                 if len(content) == 0:
                     if line == "":
                         continue
-                content.append(line)
-        frontmatter = "\n".join(frontmatter)  # + "\n"
-        content = "\n".join(content) + "\n"
+                content_lines.append(line)
+        frontmatter = "\n".join(frontmatter_lines)  # + "\n"
+        content = "\n".join(content_lines) + "\n"
         try:
-            metadata = yaml.safe_load(frontmatter)
-            if metadata is None:
-                metadata = {}
+            metadata: dict[Any, Any] = yaml.safe_load(frontmatter)  # pyright: ignore[reportExplicitAny]
         except Exception as e:
             self.log.error(f"Error parsing frontmatter: {e}")
             metadata = {}
         return metadata, content
 
-    def assemble_markdown(self, metadata, content):
-        if metadata is None or metadata == {}:
+    def assemble_markdown(self, metadata: dict[Any, Any], content: str) -> str:
+        if metadata  == {}:
             return content
         header = yaml.dump(metadata, default_flow_style=False, indent=2)
         return f"---\n{header}---\n{content}"
 
-    def note_cache_links(self, note):
-        links = []
+    def note_cache_links(self, note: dict[str, Any]) -> list[str]:  # pyright: ignore[reportExplicitAny]
+        links: list[str] = []
         if "content" in note:
-            content = note["content"]
+            content: str = str(note["content"])  # pyright: ignore[reportAny]
             for line in content.split("\n"):
                 # Find links of format [[link]] or [[link|alias]]
                 ind = line.find("[[")
@@ -108,10 +111,10 @@ class MdTools:
             note["links"] = links
         return links
 
-    def _note_get_file_creation_date_from_git(self, filepath):
+    def _note_get_file_creation_date_from_git(self, filepath: str) -> datetime.datetime | None:
         try:
             creation_date = subprocess.check_output(
-                [
+                args = [
                     "git",
                     "-C",
                     self.notes_folder,
@@ -136,7 +139,7 @@ class MdTools:
         except Exception as _:
             return None
 
-    def _note_get_file_modification_date(self, filepath):
+    def _note_get_file_modification_date(self, filepath: str) -> datetime.datetime | None:
         try:
             stat = os.stat(filepath)
             dt = datetime.datetime.fromtimestamp(stat.st_mtime)
@@ -145,8 +148,8 @@ class MdTools:
             self.log.warning(f"Error getting file modification date {filepath}: {e}")
             return None
 
-    def get_note_creation_date(self, filepath):
-        dt_git = self._note_get_file_creation_date_from_git(filepath)
+    def get_note_creation_date(self, filepath: str) -> datetime.datetime | None:
+        dt_git: datetime.datetime | None = self._note_get_file_creation_date_from_git(filepath)
         dt_stat = self._note_get_file_modification_date(filepath)
         # self.log.info(f"Creation date for {filepath} from git: {dt_git}, from stat: {dt_stat}")
         if dt_git is not None:
@@ -155,7 +158,7 @@ class MdTools:
             return dt_stat
         return None
 
-    def minimal_frontmatter(self, note, filename):
+    def minimal_frontmatter(self, note: dict[str, Any], filename: str) -> int:  # pyright: ignore[reportExplicitAny]
         changed = 0
         if "metadata" not in note:
             note["metadata"] = {}
@@ -183,9 +186,10 @@ class MdTools:
         else:
             if relative_folder == "Books":
                 if "tags" in note["metadata"]:
-                    for tag in note["metadata"]["tags"]:
+                    tags: list[str] = note["metadata"]["tags"]  # pyright: ignore[reportUnknownVariableType]
+                    for tag in tags:
                         if tag.startswith("Series/"):
-                            relative_folder = "Books/" + tag[7:]
+                            relative_folder: str = "Books/" + tag[7:]
                             break
             if note["metadata"]["context"] != relative_folder:
                 note["metadata"]["context"] = relative_folder
@@ -197,7 +201,7 @@ class MdTools:
     # in fxsorm: `<!-- key1: value1; key2: value2; ... -->`
     # Returns a dict with tables, each table is a dict with columns and data and metadata
     ### XXX Frickel-Parser!
-    def parse_tables(self, content, filepath, note_uuid=None):
+    def parse_tables(self, content: str, filepath:str, note_uuid:str | None=None) -> list[Any]:  # pyright: ignore[reportExplicitAny]
         tables = []
         lines = content.split("\n")
         table_state = 0
@@ -303,7 +307,7 @@ class MdTools:
                             metadata["domain"] = f"{subfolders}"
                         # if len(metadata.keys()) > 0:
                         #     print(f"Table metadata: {metadata}")
-                        table_entry = {
+                        table_entry: dict[str, str | list[str] | Any] = {  # pyright: ignore[reportExplicitAny]
                             "columns": columns,
                             "rows": rows,
                             "metadata": metadata,
@@ -333,11 +337,11 @@ class MdTools:
                         metadata[key] = val
         return tables
 
-    def read_md_file(self, filename):
+    def read_md_file(self, filename: str) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+        note: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
         with open(filename, "r") as f:
             note_text = f.read()
             changed = 0
-            note = {}
             note["changes"] = changed
             note["metadata"], note["content"] = self.parse_frontmatter(note_text)
             meta_changes = self.minimal_frontmatter(note, filename)
@@ -345,9 +349,9 @@ class MdTools:
             #     self.log.info(f"Minimal frontmatter changes added to {filename}: {note['metadata']}")
             note["changes"] += meta_changes
             if "uuid" in note["metadata"]:
-                note_uuid = note["metadata"]["uuid"]
+                note_uuid: str = note["metadata"]["uuid"]
             else:
-                note_uuid = None
+                note_uuid = ""
             note["tables"] = self.parse_tables(note["content"], filename, note_uuid)
             self.note_cache_links(note)
             if note["changes"] > 0:
@@ -359,48 +363,47 @@ class MdTools:
             #     return None
         return note
 
-    def register_note(self, note_filename, note):
+    def register_note(self, note_filename: str, note: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
         note_file_title = os.path.basename(note_filename)[:-3].lower()
         if note_file_title in self.note_file_title_to_filename:
             self.log.error(
                 f"Duplicate note basename {note_file_title} encountered at {note_filename}, ignoring note, please rename!"
             )
             return
-        if note is not None:
-            if "metadata" in note and "uuid" in note["metadata"]:
-                uuid = note["metadata"]["uuid"]
-                if uuid in self.uuid_to_note_filename:
-                    self.log.error(
-                        f"Duplicate uuid {uuid} encountered at {note_filename}, ignoring note, please make UUID unique!"
-                    )
-                    return
-                self.uuid_to_note_filename[uuid] = note_filename
-            self.note_file_title_to_filename[note_file_title] = note_filename
-            self.notes[note_filename] = note
+        if "metadata" in note and "uuid" in note["metadata"]:
+            uuid:str = note["metadata"]["uuid"]
+            if uuid in self.uuid_to_note_filename:
+                self.log.error(
+                    f"Duplicate uuid {uuid} encountered at {note_filename}, ignoring note, please make UUID unique!"
+                )
+                return
+            self.uuid_to_note_filename[uuid] = note_filename
+        self.note_file_title_to_filename[note_file_title] = note_filename
+        self.notes[note_filename] = note
 
-    def write_note(self, filename, note):
+    def write_note(self, filename: str, note: dict[str, Any]) -> bool:  # pyright: ignore[reportExplicitAny]
         if "metadata" not in note:
             self.log.error(f"Note {filename} has no metadata")
             return False
         if "content" not in note:
             self.log.error(f"Note {filename} has no content")
             return False
-        note_reassembled = self.assemble_markdown(note["metadata"], note["content"])
+        note_reassembled = self.assemble_markdown(note["metadata"], note["content"])  # pyright: ignore[reportAny]
         if self.dry_run is False:
             with open(filename, "w") as f:
-                f.write(note_reassembled)
+                _ = f.write(note_reassembled)
             self.log.info(f"Note {filename} written")
         else:
             self.log.warning(f"Dry run: Note {filename} would be written")
         return True
 
-    def read_notes(self, skip_dirs, progress=False):
-        self.notes = {}
-        self.uuid_to_note_filename = {}
-        self.note_file_title_to_filename = {}
+    def read_notes(self, skip_dirs: list[str], progress: bool = False):
+        self.notes: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
+        self.uuid_to_note_filename: dict[str, str] = {}
+        self.note_file_title_to_filename: dict[str, str] = {}
 
+        notes_count = 0
         if progress is True:
-            notes_count = 0
             for root, dirs, files in os.walk(self.notes_folder):
                 for skip_dir in skip_dirs:
                     if skip_dir in dirs:
@@ -411,7 +414,7 @@ class MdTools:
             if notes_count == 0:
                 self.log.info("No markdown notes found")
                 return
-            notes_progress = 0
+        notes_progress = 0
         num = 0
         for root, dirs, files in os.walk(self.notes_folder):
             for skip_dir in skip_dirs:
@@ -431,8 +434,7 @@ class MdTools:
 
                     note_filename = os.path.join(root, file)
                     note = self.read_md_file(note_filename)
-                    if note is not None:
-                        self.register_note(note_filename, note)
+                    self.register_note(note_filename, note)
 
         self.log.info(f"Found {len(self.notes)} existing markdown notes")
         return
@@ -447,12 +449,12 @@ class MdTools:
     #     return self.books
 
     def rename_note(
-        self, current_filename, new_filename, update_links=True, dry_run=False
+        self, current_filename: str, new_filename: str, update_links: bool = True, dry_run: bool = False
     ):
         if current_filename not in self.notes:
             self.log.error(f"Note {current_filename} not found")
             return
-        note = self.notes[current_filename]
+        note = self.notes[current_filename]  # pyright: ignore[reportAny]
         if new_filename in self.notes:
             self.log.error(f"Note {new_filename} already exists")
             return
@@ -474,8 +476,8 @@ class MdTools:
             for note_filename in self.notes:
                 note = self.notes[note_filename]
                 if "content" in note:
-                    content = note["content"]
-                    new_content = []
+                    content: str = note["content"]
+                    new_content: list[str] = []
                     note_updated = False
                     for line in content.split("\n"):
                         test_line = line.lower()
@@ -524,34 +526,17 @@ class MdTools:
                         self.write_note(note_filename, note)
         return content_updates
 
-    def md_filename(self, name):
+    def md_filename(self, name: str):
         name = sanitized_md_filename(name)
         md_book_note_filename = os.path.join(self.notes_books_folder, name + ".md")
         return md_book_note_filename
 
-    def md_annotation_filename(self, name):
+    def md_annotation_filename(self, name: str):
         name = sanitized_md_filename(name)
         annotations_filename = os.path.join(
             self.notes_annotations_folder, "Notes on " + name
         )
         return annotations_filename
-
-    def match_md_note_filename(self, md_book_note_filename):
-        for book in self.books:
-            if md_book_note_filename == book:
-                self.log.info(f"exact match: {md_book_note_filename}")
-                return md_book_note_filename
-        # for book in self.books:
-        #     if (
-        #         md_note_filename[:-3] == book[: len(md_note_filename[:-3])]
-        #         or md_note_filename[: len(book[:-3])] == book[:-3]
-        #     ):
-        #         self.log.info(
-        #             f"Warning: Book filename {md_note_filename} does not match {book} exactly"
-        #         )
-        #         return book
-        self.log.info(f"no match: {md_book_note_filename}")
-        return None
 
     @staticmethod
     def gen_markdown_header(clip):
@@ -593,49 +578,4 @@ class MdTools:
             md += f"_on {clip['date']}:_\n\n"
             md += f"> {clip['content']}\n\n"
             with open(clip["notes_filename"], "w") as f:
-                f.write(md)
-
-    def notes_differ(
-        self,
-        old_note,
-        new_note,
-        check_frontmatter=True,
-        check_content=True,
-        verbose=True,
-    ):
-        old_note, changed1 = self._repairYaml(old_note)
-        # if changed1 > 0:
-        #     self.log.warning(f"YAML repaired in old_note")
-        old_fm, old_content = self.parse_frontmatter(old_note)
-        new_fm, new_content = self.parse_frontmatter(new_note)
-
-        diffs = 0
-        if check_frontmatter is True:
-            key_set = set(old_fm.keys()).union(set(new_fm.keys()))
-            for key in key_set:
-                if key not in old_fm:
-                    if verbose is True:
-                        print("Existing note does not have key", key)
-                    diffs += 1
-                    continue
-                if key not in new_fm:
-                    if verbose is True:
-                        print("New note does not have key", key)
-                    diffs += 1
-                    continue
-                if old_fm[key] != new_fm[key]:
-                    if verbose is True:
-                        print(f"Key {key} differs: {old_fm[key]} vs {new_fm[key]}")
-                    diffs += 1
-                    continue
-        if check_content is True:
-            if old_content.strip() != new_content.strip():
-                if verbose is True:
-                    print(
-                        f"Content differs, length: {len(old_content)} vs {len(new_content)}"
-                    )
-                diffs += 1
-        if verbose is True:
-            if diffs > 0:
-                print(f"Found {diffs} differences\n")
-        return diffs
+                _ = f.write(md)

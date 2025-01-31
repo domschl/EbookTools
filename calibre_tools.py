@@ -13,6 +13,7 @@ import zlib
 import base64
 from PIL import Image  # type: ignore
 from bs4 import BeautifulSoup  # type:ignore ## pip install beautifulsoup4
+from typing import TypedDict
 
 from ebook_utils import sanitized_md_filename, progress_bar_string
 from calibre_tools_localization import calibre_prefixes
@@ -24,6 +25,46 @@ import warnings
 warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
 
+class DocsEntry(TypedDict):
+    path: str
+    name: str
+    size: int
+    hash: str
+    hash_algo: str
+    mod_time: float
+    ref_name: str | None
+
+
+class CalibreLibEntry(TypedDict):
+    title: str
+    title_sort: str
+    short_title: str
+    short_folder: str
+    description: str
+    creators: list[str]
+    series: str
+    subjects: list[str]
+    languages: list[str]
+    publisher: str
+    identifiers: list[str]
+    uuid: str
+    calibre_id: str
+    publication_date: str
+    date_added: str
+    context: str
+    cover: str
+    doc_text: str
+    docs: list[DocsEntry]
+    formats: list[str]
+    repo_path: list[str] | None
+
+
+class RepoState(TypedDict):
+    lib_entries: list[CalibreLibEntry]
+    sequence_number: int
+    timestamp: str
+
+    
 class CalibreTools:
     """ "Tools to manage Calibre library metadata and export to markdown
 
@@ -37,7 +78,8 @@ class CalibreTools:
         self.calibre_library_name: str = calibre_library_name
         cal_path = os.path.expanduser(calibre_path)
         self.sequence_number: int = 0
-        self.lib_entries = []
+        self.lib_entries: list[CalibreLibEntry] = []
+        self.old_lib_entries: list[CalibreLibEntry] = []
         if not os.path.exists(cal_path):
             self.log.error(f"Calibre path does not exist: {cal_path}")
             raise ValueError(f"Calibre path does not exist: {cal_path}")
@@ -93,7 +135,7 @@ class CalibreTools:
         s = unicodedata.normalize("NFC", s)
         return s
 
-    def load_calibre_library_metadata(self, max_entries=None, progress=False, use_sha256=False, load_text=True):
+    def load_calibre_library_metadata(self, progress:bool=False, use_sha256:bool=False, load_text:bool=True):
         self.lib_entries = []
 
         total_entries = 0
@@ -112,7 +154,7 @@ class CalibreTools:
         current_entry = 0
         start_time = time.time()
         mean_time_per_doc = 0
-        for root, dirs, files in os.walk(self.calibre_path):
+        for root, _dirs, files in os.walk(self.calibre_path):
             if ".caltrash" in root or ".calnotes" in root:
                 continue
             for file in files:
@@ -137,19 +179,19 @@ class CalibreTools:
                             f"{progress_bar} {current_entry}/{total_entries}, dt={mean_time_per_doc:.4f}, remaining: {remaining_time:.1f} sec.    ", end="\r"
                         )
 
-                    title = None
-                    title_sort = None
-                    description = None
+                    title = ""
+                    title_sort = ""
+                    description = ""
                     creators = []
-                    series = None
+                    series = ""
                     subjects = []
                     languages = []
-                    publisher = None
-                    identifiers = []
-                    uuid = None
-                    calibre_id = None
-                    pub_date = None
-                    date_added = None
+                    publisher = ""
+                    identifiers: list[str] = []
+                    uuid = ""
+                    calibre_id = ""
+                    pub_date = ""
+                    date_added = ""
 
                     # cover = None
                     docs = []
@@ -173,16 +215,16 @@ class CalibreTools:
                         self.log.error(f"No metadata found in OPF file for: {filename}")
                         continue
 
-                    title = metadata.find("dc:title", ns)
-                    title = title.text if title is not None else None
-                    description = metadata.find("dc:description", ns)
-                    description = description.text if description is not None else None
+                    title_md = metadata.find("dc:title", ns)
+                    title: str = str(title_md.text) if title_md is not None else ""
+                    description_md = metadata.find("dc:description", ns)
+                    description: str = str(description_md.text) if description_md is not None else ""
 
                     # creator = metadata.find("dc:creator", ns)
                     # creators = creator.text.split(", ") if creator is not None else []
                     # Get all authors from 'role': <dc:creator opf:file-as="Berlitz, Charles &amp; Moore, William L." opf:role="aut">Charles Berlitz</dc:creator>
                     # id.attrib["{http://www.idpf.org/2007/opf}scheme"]
-                    creators = []
+                    creators: list[str] = []
                     for creator in metadata.findall("dc:creator", ns):
                         if "{http://www.idpf.org/2007/opf}role" in creator.attrib:
                             if (
@@ -193,57 +235,57 @@ class CalibreTools:
                                     self.log.error(
                                         f"Author name contains comma: {creator.text}"
                                     )
-                                creators.append(creator.text)
+                                creators.append(str(creator.text))
 
-                    subjects = metadata.findall("dc:subject", ns)
-                    subjects = [subject.text for subject in subjects]
-                    languages = metadata.findall("dc:language", ns)
-                    languages = [language.text for language in languages]
-                    uuids = metadata.findall("dc:identifier", ns)
-                    uuid = None
-                    calibre_id = None
-                    for u in uuids:
+                    subjects_md = metadata.findall("dc:subject", ns)
+                    subjects: list[str] = [str(subject.text) for subject in subjects_md]
+                    languages_md = metadata.findall("dc:language", ns)
+                    languages: list[str] = [str(language.text) for language in languages_md]
+                    uuids_md = metadata.findall("dc:identifier", ns)
+                    uuid: str = ""
+                    calibre_id: str = ""
+                    for u in uuids_md:
                         if "id" not in u.attrib:
                             continue
                         if u.attrib["id"] == "calibre_id":
-                            calibre_id = u.text
+                            calibre_id = str(u.text)
                         if u.attrib["id"] == "uuid_id":
-                            uuid = u.text
+                            uuid = str(u.text)
 
-                    publisher = metadata.find("dc:publisher", ns)
-                    publisher = publisher.text if publisher is not None else None
-                    date = metadata.find("dc:date", ns)
-                    date = date.text if date is not None else None
+                    publisher_md = metadata.find("dc:publisher", ns)
+                    publisher: str = str(publisher_md.text) if publisher_md is not None else ""
+                    date_md = metadata.find("dc:date", ns)
+                    date: str = str(date_md.text) if date_md is not None else ""
                     # convert to datetime, add utc timezone
-                    if isinstance(date, str):
+                    if date != "":
                         pub_date = (
                             datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S%z")
                             .replace(tzinfo=timezone.utc)
                             .isoformat()
                         )
 
-                    series = None
-                    date_added = None
-                    title_sort = None
-                    timestamp = None
+                    series: str = ""
+                    date_added: str = ""
+                    title_sort: str = ""
+                    timestamp: str = ""
                     for meta in metadata.findall("opf:meta", ns):
                         if "name" in meta.attrib:
                             if meta.attrib["name"] == "calibre:series":
                                 series = meta.attrib["content"]
                             if meta.attrib["name"] == "calibre:timestamp":
-                                timestamp = meta.attrib["content"]
+                                timestamp = str(meta.attrib["content"])
                                 # timestamp can be 2023-11-11T17:03:48.214591+00:00 or 2023-11-11T17:03:48+00:00
                                 timestamp = timestamp.split(".")[0]
                                 if timestamp.endswith("+00:00"):
-                                    date_added = datetime.datetime.strptime(
+                                    date_added_dt = datetime.datetime.strptime(
                                         timestamp, "%Y-%m-%dT%H:%M:%S%z"
                                     )
                                 else:
-                                    date_added = datetime.datetime.strptime(
+                                    date_added_dt = datetime.datetime.strptime(
                                         timestamp, "%Y-%m-%dT%H:%M:%S"
                                     )
 
-                                date_added = date_added.replace(
+                                date_added = date_added_dt.replace(
                                     tzinfo=timezone.utc
                                 ).isoformat()
                             if meta.attrib["name"] == "calibre:title_sort":
@@ -253,7 +295,8 @@ class CalibreTools:
                                 ) in (
                                     calibre_prefixes
                                 ):  # remove localized prefixes ", The", ", Der", etc. (curr: DE, EN)
-                                    for prefix in calibre_prefixes[lang]["prefixes"]:
+                                    prefixes = calibre_prefixes[lang]["prefixes"]
+                                    for prefix in prefixes:
                                         ending = f", {prefix}"
                                         if title_sort.endswith(ending):
                                             title_sort = title_sort[: -len(ending)]
@@ -277,9 +320,11 @@ class CalibreTools:
                             if scheme not in ["calibre", "uuid"]:
                                 identifiers.append(f"{scheme}/{sid}")
                                 # self.log.info(f"{title} Identifier: {scheme}: {sid}")
-                    entry = {
+                    entry: CalibreLibEntry = {
                         "title": title,
                         "title_sort": title_sort,
+                        "short_title": "",
+                        "short_folder": "",
                         "description": description,
                         "creators": creators,
                         "series": series,
@@ -292,14 +337,19 @@ class CalibreTools:
                         "publication_date": pub_date,
                         "date_added": date_added,
                         "context": f"Books/{series}",
+                        "cover": "",
+                        "doc_text": "",
+                        "docs": [],
+                        "formats": [],
+                        "repo_path": [],
                     }
                     if "cover.jpg" in files:
                         entry["cover"] = os.path.join(root, "cover.jpg")
                     # check if pdf, epub, md, text files exist in this directory
-                    exts = [".pdf", ".epub", ".md", ".txt"]
-                    docs = []
-                    formats = []
-                    doc_text = None
+                    exts: list[str] = [".pdf", ".epub", ".md", ".txt"]
+                    docs: list[DocsEntry] = []
+                    formats: list[str] = []
+                    doc_text: str = ""
                     for doc in files:
                         if doc.endswith(tuple(exts)):
                             doc_full_name = os.path.join(root, doc)
@@ -310,11 +360,11 @@ class CalibreTools:
                                 with open(doc_full_name, "r") as f:
                                     doc_text = f.read()
                             size = os.path.getsize(doc_full_name)
-                            mod_time = os.path.getmtime(doc_full_name)
+                            mod_time: float = os.path.getmtime(doc_full_name)
                             if mod_time > latest_mod_time:
                                 latest_mod_time = mod_time
                             if use_sha256 is False:
-                                hash = CalibreTools._get_crc32(doc_full_name)
+                                hash = str(CalibreTools._get_crc32(doc_full_name))
                                 hash_algo = "crc32"
                             else:
                                 hash = CalibreTools._get_sha256(doc_full_name)
@@ -327,10 +377,10 @@ class CalibreTools:
                                     "hash": hash,
                                     "hash_algo": hash_algo,
                                     "mod_time": mod_time,
+                                    "ref_name": None,
                                 }
                             )
-                    if doc_text is not None:
-                        entry["doc_text"] = doc_text
+                    entry["doc_text"] = doc_text
                     entry["docs"] = docs
                     entry["formats"] = formats
                     short_title = entry["title_sort"]
@@ -397,12 +447,12 @@ class CalibreTools:
                             exit(-1)
                     self.lib_entries.append(entry)
                     self.log.debug(f"Added entry: {entry['title']}")
-                    if max_entries is not None and len(self.lib_entries) >= max_entries:
-                        self.log.warning(f"Reached max entries {max_entries}")
-                        return latest_mod_time
+                    # if max_entries is not None and len(self.lib_entries) >= max_entries:
+                    #     self.log.warning(f"Reached max entries {max_entries}")
+                    #     return latest_mod_time
         return latest_mod_time
 
-    def check_epub_calibre_bookmarks(self, epub_path, entry, dry_run=False):
+    def check_epub_calibre_bookmarks(self, epub_path: str, entry, dry_run:bool=False):
         # Open epub and look if META-INF/calibre_bookmarks.txt exists
         # if yes, parse it (base64/json) and (TBD) add to entry
         with zipfile.ZipFile(epub_path, "r") as z:
@@ -412,70 +462,66 @@ class CalibreTools:
                 self.log.debug(f"No calibre_bookmarks for {entry['title']}: {e}")
                 entry["calibre_bookmarks"] = []
                 return
-            if reader is not None:
-                # Parse bookmarks
-                bookmarks_base64 = reader.read().decode("utf-8")
-                start_token = "encoding=json+base64:\n"
-                if bookmarks_base64.startswith(start_token):
-                    bookmarks_base64 = (
-                        bookmarks_base64.replace(start_token, "")
-                        .replace("\n", "")
-                        .replace("\r", "")
-                    )
-                    try:
-                        bookmarks_jsonstr = base64.b64decode(bookmarks_base64)
-                    except Exception as e:
-                        self.log.error(
-                            f"Error decoding base64 calibre-bookmarks for {entry['title']}, {bookmarks_base64}: {e}"
-                        )
-                        entry["calibre_bookmarks"] = []
-                        reader.close()
-                        return
-                    try:
-                        bookmarks = json.loads(bookmarks_jsonstr)
-                    except Exception as e:
-                        self.log.error(
-                            f"Error parsing json calibre-bookmarks for {entry['title']}, {bookmarks_jsonstr}: {e}"
-                        )
-                        entry["calibre_bookmarks"] = []
-                        reader.close()
-                        return
-                    if isinstance(bookmarks, list):
-                        entry["calibre_bookmarks"] = bookmarks
-                        if dry_run is False:
-                            self.log.info(
-                                f"TODO: sync calibre-bookmarks for {entry['title']}"
-                            )
-                        else:
-                            self.log.info(
-                                f"Would sync calibre-bookmarks for {entry['title']}"
-                            )
-                    else:
-                        self.log.error(
-                            f"Calibre-Bookmarks of {entry['title']} not in expected format: {bookmarks_jsonstr}, expected list"
-                        )
-                        entry["calibre_bookmarks"] = []
-                    reader.close()
-                else:
+            bookmarks_base64 = reader.read().decode("utf-8")
+            start_token = "encoding=json+base64:\n"
+            if bookmarks_base64.startswith(start_token):
+                bookmarks_base64 = (
+                    bookmarks_base64.replace(start_token, "")
+                    .replace("\n", "")
+                    .replace("\r", "")
+                )
+                try:
+                    bookmarks_jsonstr = base64.b64decode(bookmarks_base64)
+                except Exception as e:
                     self.log.error(
-                        f"Calibre-Bookmarks of {entry['title']} not in expected format: {bookmarks_base64}"
+                        f"Error decoding base64 calibre-bookmarks for {entry['title']}, {bookmarks_base64}: {e}"
                     )
                     entry["calibre_bookmarks"] = []
                     reader.close()
+                    return
+                try:
+                    bookmarks = json.loads(bookmarks_jsonstr)
+                except Exception as e:
+                    self.log.error(
+                        f"Error parsing json calibre-bookmarks for {entry['title']}, {bookmarks_jsonstr}: {e}"
+                    )
+                    entry["calibre_bookmarks"] = []
+                    reader.close()
+                    return
+                if isinstance(bookmarks, list):
+                    entry["calibre_bookmarks"] = bookmarks
+                    if dry_run is False:
+                        self.log.info(
+                            f"TODO: sync calibre-bookmarks for {entry['title']}"
+                        )
+                    else:
+                        self.log.info(
+                            f"Would sync calibre-bookmarks for {entry['title']}"
+                        )
+                else:
+                    self.log.error(
+                        f"Calibre-Bookmarks of {entry['title']} not in expected format: {bookmarks_jsonstr}, expected list"
+                    )
+                    entry["calibre_bookmarks"] = []
+                reader.close()
             else:
+                self.log.error(
+                    f"Calibre-Bookmarks of {entry['title']} not in expected format: {bookmarks_base64}"
+                )
                 entry["calibre_bookmarks"] = []
+                reader.close()
 
     def export_calibre_books(
         self,
-        target_path,
-        format=["pdf", "epub", "md", "txt"],
-        dry_run=False,
-        delete=False,
-        vacuum=False,
+        target_path: str,
+        format: list[str],
+        dry_run: bool = False,
+        delete: bool = False,
+        vacuum: bool = False,
     ):
         target = os.path.expanduser(target_path)
         self.old_lib_entries, self.sequence_number = self.load_state(target)
-        if self.lib_entries is None or len(self.lib_entries) == 0:
+        if len(self.lib_entries) == 0:
             self.log.error("No library entries found, cannot export")
             return 0, 0, 0
         updated = False
@@ -487,7 +533,7 @@ class CalibreTools:
             self.log.info(f"Creating target path {target}")
             os.makedirs(target)
         # Enumerate all files in target:
-        target_existing = []
+        target_existing: list[str] = []
         koreader_metadata = {}
         for root, dirs, files in os.walk(target):
             # if root is a dot dir, ignore
@@ -565,7 +611,7 @@ class CalibreTools:
                     doc_changed = False
                     if 'hash_algo' in doc and doc['hash_algo'] == 'crc32':
                         crc32 = CalibreTools._get_crc32(doc_name)
-                        if crc32 != doc["hash"]:
+                        if str(crc32) != doc["hash"]:
                             self.log.warning(
                                 f"CRC32 changed for {doc['name']} from {doc['hash']} to {crc32}"
                             )
@@ -612,8 +658,8 @@ class CalibreTools:
                     else:
                         self.log.warning(f"Would delete {file}")
         # check if koreader metadata folders (.sdr) without corresponding library entry exist
-        valid_books = []
-        sdr_debris = []
+        valid_books: list[str] = []
+        sdr_debris: list[str] = []
         for entry in self.lib_entries:
             valid_books.append(entry["short_title"])
         for title in koreader_metadata:
@@ -674,10 +720,10 @@ class CalibreTools:
 
         return new_docs, upd_docs, debris
 
-    def save_state(self, target_path, lib_entries, sequence_number):
+    def save_state(self, target_path: str, lib_entries: list[CalibreLibEntry], sequence_number:int) -> int:
         repo_state_filename = os.path.join(target_path, "repo_state.json")
         sequence_number = sequence_number + 1
-        repo_state = {
+        repo_state: RepoState = {
             "lib_entries": lib_entries,
             "sequence_number": sequence_number,
             "timestamp": datetime.datetime.now(tz=timezone.utc).isoformat(),
@@ -686,15 +732,15 @@ class CalibreTools:
             json.dump(repo_state, f, indent=4)
         return sequence_number
 
-    def load_state(self, target_path):
+    def load_state(self, target_path: str) -> tuple[list[CalibreLibEntry], int]:
         repo_state_filename = os.path.join(target_path, "repo_state.json")
         if not os.path.exists(repo_state_filename):
             self.log.error(f"State file not found at {repo_state_filename}")
             return [], 0
         with open(repo_state_filename, "r") as f:
-            repo_state = json.load(f)
-            lib_entries = repo_state["lib_entries"]
-            sequence_number = repo_state["sequence_number"]
+            repo_state: RepoState = json.load(f)
+            lib_entries: list[CalibreLibEntry] = repo_state["lib_entries"]
+            sequence_number: int = repo_state["sequence_number"]
             self.log.info(
                 f"Loaded state from {repo_state_filename}, sequence number: {sequence_number}"
             )
@@ -707,8 +753,8 @@ class CalibreTools:
             return False
         try:
             with open(repo_state_filename, "r") as f:
-                repo_state = json.load(f)
-                sequence_number = repo_state["sequence_number"]
+                repo_state: RepoState = json.load(f)
+                sequence_number: int = repo_state["sequence_number"]
                 if sequence_number != self.sequence_number:
                     self.log.warning(
                         f"repo_state.json sequence number changed from {sequence_number} to {self.sequence_number}"
@@ -719,8 +765,8 @@ class CalibreTools:
         return False
 
     def _gen_thumbnail(
-        self, image_path, thumb_dir, thumb_dir_full, uuid, size=(128, 128), force=False
-    ):
+        self, image_path: str, thumb_dir: str, thumb_dir_full: str, uuid: str, size: tuple[int, int]=(128, 128), force:bool=False
+    ) -> str:
         dest_path_full = os.path.join(thumb_dir_full, uuid + ".jpg")
         dest_path_rel = os.path.join(thumb_dir, uuid + ".jpg")
 
@@ -733,7 +779,7 @@ class CalibreTools:
             im.save(dest_path_full, "JPEG")
         return dest_path_rel
 
-    def _gen_md_calibre_link(self, id) -> str:
+    def _gen_md_calibre_link(self, id:str ) -> str:
         # Example: calibre://show-book/_hex_-43616c696272655f4c696272617279/1515
         hex_name = "".join([hex(ord(c))[2:] for c in self.calibre_library_name])
         link = f"calibre://show-book/_hex_-{hex_name}/{id}"
