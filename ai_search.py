@@ -2,25 +2,31 @@ import logging
 import os
 import json
 import time
-
+from typing import TypedDict, override
 import ollama
+import numpy.typing
 import numpy as np
 
 
+class EmbeddingEntry(TypedDict):
+    filename: str
+    text: str
+    embedding_generator: str
+    embedding: numpy.typing.NDArray[np.float32]
+
 class EmbeddingSearch:
-    def __init__(self, embeddings_path, epsilon = 1e-6):
+    def __init__(self, embeddings_path: str, epsilon: float = 1e-6):
         self.log: logging.Logger = logging.getLogger("EmbSearch")
-        modes = ["filepath", "textlibrary"]
-        self.epsilon = epsilon
-        self.np_type = np.float32
-        self.texts = None
-        self.repos = {}
+        self.modes: list[str] = ["filepath", "textlibrary"]
+        self.epsilon: float = epsilon
+        self.texts: dict[str, EmbeddingEntry] | None = None
+        self.repos: dict[str, str] = {}
         e_path = os.path.expanduser(embeddings_path)
         if os.path.exists(e_path) is False:
             self.log.error(f"embeddings_path={embeddings_path} does not exist!")
-        self.embeddings_path = e_path
-        self.load_text_embeddings()
-        self.load_repos()
+        self.embeddings_path: str = e_path
+        _ = self.load_text_embeddings()
+        _ = self.load_repos()
 
     def load_repos(self, silent: bool = True) -> int:
         repo_file = os.path.join(self.embeddings_path, 'repos_embeddings.json')
@@ -60,9 +66,11 @@ class EmbeddingSearch:
                     with open(full_path, 'r') as f:
                         doc_text = f.read()
                         descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}"
-                        entry = {
+                        entry: EmbeddingEntry = {
                             'filename': file,
-                            'text': doc_text
+                            'text': doc_text,
+                            'embedding_generator': "",
+                            'embedding': np.ndarray([])
                         }
                         if descriptor_path in self.texts:
                             if self.texts[descriptor_path]['text'] != doc_text:
@@ -75,22 +83,24 @@ class EmbeddingSearch:
         return count
 
     @staticmethod
-    def get_chunk(text, index, chunk_size=2048):
+    def get_chunk(text: str, index: int, chunk_size: int=2048):
         chunk = text[index*chunk_size:(index+1)*chunk_size]
         return chunk
 
+    # This contains many annotations that only serve to shut up type-checker of basedpyright...
     class NumpyEncoder(json.JSONEncoder):
-        def default(self, obj):
-            if isinstance(obj, np.ndarray):
-                return obj.tolist()
-            return super().default(obj)
-        
+        @override  # Python 3.12 beauty
+        def default(self, o):  # pyright: ignore[reportAny, reportMissingParameterType] # type: ignore
+            if isinstance(o, np.ndarray):
+                return o.tolist()
+            return super().default(o)  # pyright: ignore[reportAny] # type: ignore
+
     def save_text_embeddings(self):
         emb_file = os.path.join(self.embeddings_path, 'library_embeddings.json')
         with open(emb_file, 'w') as f:
             json.dump(self.texts, f, cls=self.NumpyEncoder)
 
-    def load_text_embeddings(self, silent=True):
+    def load_text_embeddings(self, silent: bool=True) -> int:
         emb_file = os.path.join(self.embeddings_path, 'library_embeddings.json')
         if os.path.exists(emb_file) is False:
             if silent is False:
@@ -98,59 +108,61 @@ class EmbeddingSearch:
             return 0
         with open(emb_file, 'r') as f:
             self.texts  = json.load(f)
-        for txt in self.texts:
-            for key in self.texts[txt]:
+        if self.texts is None:
+            return 0
+        for txt_desc in self.texts:
+            for key in self.texts[txt_desc]:
                 if key.startswith('emb_'):
-                    self.texts[txt][key] = np.asarray(self.texts[txt][key], dtype=self.np_type)
+                    self.texts[txt_desc][key] = np.asarray(self.texts[txt_desc][key], dtype=np.float32)
         return len(self.texts)
                 
-    def gen_embeddings(self, model, library_name=None, verbose=False, chunk_size=2048, save_every_sec=60):
-        if library_name is not None:
-            lib_desc = '{' + library_name + '}'
-        else:
-            lib_desc = None
+    def gen_embeddings(self, model: str, library_name: str, verbose: bool=False, chunk_size: int=2048, save_every_sec: float | None=60):
+        lib_desc = '{' + library_name + '}'
         last_save = time.time()
-        emb_key = f"emb_{model}"
         if self.texts is None:
             return
         for desc in self.texts:
-            if library_name is None or desc.startswith(lib_desc):
-                if emb_key not in self.texts[desc]:
-                    text = self.texts[desc]['text']
+            if desc.startswith(lib_desc):
+                if 'embedding' not in self.texts[desc]:
+                    text: str = self.texts[desc]['text']
                     text_chunks = [self.get_chunk(text, i) for i in range(len(text) // chunk_size)]
-                    embeddings = None
+                    # embeddings: np.ndarray([], dtype=np.float32)
+                    init: bool = False
+                    embeddings = np.array([[]], dtype=np.float32)
                     for text_chunk in text_chunks:
                         response = ollama.embed(model=model, input=text_chunk)
-                        embedding = np.array(response["embeddings"][0], dtype=self.np_type)
-                        if embeddings is None:
-                            embeddings = np.array([embedding], dtype=self.np_type)
+                        embedding: numpy.typing.NDArray[np.float32] = np.array(response["embeddings"][0], dtype=np.float32)
+                        if init is False:
+                            init = True
+                            embeddings: numpy.typing.NDArray[np.float32] = np.array([embedding], dtype=np.float32)
                         else:
-                            embeddings = np.append(embeddings, np.array([embedding], dtype=self.np_type), axis=0)
+                            embeddings = np.append(embeddings, np.array([embedding], dtype=np.float32), axis=0)
                         print(".", end="")
                     print()   
-                    self.texts[desc][emb_key] = embeddings
+                    self.texts[desc]['embedding'] = embeddings
+                    self.texts[desc]['embedding_generator'] = model
                     # del self.texts[desc]['text']
                     if verbose is True:
-                         print(f"Generated {self.texts[desc][emb_key].shape[0]} embeddings for {desc}")
+                         print(f"Generated {self.texts[desc]['embedding'].shape[0]} embeddings for {desc}")
                     if save_every_sec is not None:
                         if time.time() - last_save > save_every_sec:
                             self.save_text_embeddings()
                             last_save = time.time()
         self.save_text_embeddings()
 
-    def cos_sim(self, a, b):
-        m = np.dot(a,b)
-        n = np.linalg.norm(a) * np.linalg.norm(b)
+    def cos_sim(self, a: numpy.typing.ArrayLike, b: numpy.typing.ArrayLike) -> float:
+        m: float = np.dot(a,b)
+        n: float = float(np.linalg.norm(a) * np.linalg.norm(b))
         if n < self.epsilon:
             n = self.epsilon
-        return m / n
+        return float(m / n)
 
-    def search_embeddings(self, model, search_text, verbose=False, chunk_size=2048):
+    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, chunk_size: int=2048):
         search_text = search_text[:chunk_size]
         while len(search_text) < chunk_size:
             search_text = " " + search_text
         response = ollama.embed(model=model, input=search_text)
-        search_embedding = np.array(response["embeddings"][0], dtype=self.np_type)
+        search_embedding = np.array(response["embeddings"][0], dtype=np.float32)
         best_doc = ""
         best_index = -1
         cos_val = 0
@@ -159,13 +171,12 @@ class EmbeddingSearch:
             return
         for desc in self.texts:
             entry =  self.texts[desc]
-            emb_key = f"emb_{model}"
-            if emb_key not in entry:
+            if entry['embedding'] is None:
                 if verbose is True:
-                    print(f"No embeddings from model {model} in {desc['filename']}, ignoring doc")
+                    print(f"No embeddings from model {model} in {entry['filename']}, ignoring doc")
                 continue
-            for index in range(entry[emb_key].shape[0]):
-                chunk = entry[emb_key][index,:]
+            for index in range(entry['embedding'].shape[0]):
+                chunk = entry['embedding'][index,:]
                 # print("Search:", list(search_embedding))
                 # print("Chunk:", list(chunk))
                 # if index == 1:
