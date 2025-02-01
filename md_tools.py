@@ -5,10 +5,17 @@ import yaml
 import uuid
 import subprocess
 import datetime
-from typing import Any
+from typing import Any, cast, TypedDict
 
 from ebook_utils import sanitized_md_filename, progress_bar_string
 
+
+class MDTable(TypedDict):
+    columns: list[str]
+    rows: list[list[str]]
+    metadata: dict[str, Any]  # pyright: ignore[reportExplicitAny]
+    note_uuid: str
+             
 
 class MdTools:
     """Class to manage the markdown folder of book records
@@ -21,11 +28,11 @@ class MdTools:
         notes_folder: str,
         notes_books_folder: str,
         notes_annotations_folder: str = "",
-        skip_dirs: list[str] = [],
+        skip_dirs: list[str] | None = None,
         progress: bool = False,
         dry_run: bool = False,
     ):
-        if len(skip_dirs) == 0:
+        if skip_dirs is None or len(skip_dirs) == 0:
             skip_dirs = [".obsidian", "Templates", "Templater"]
         self.log: logging.Logger = logging.getLogger("MdTools")
         self.dry_run: bool = dry_run
@@ -48,7 +55,7 @@ class MdTools:
         self.progress: bool = progress
         self.read_notes(skip_dirs=skip_dirs, progress=progress)
 
-    def parse_frontmatter(self, txt:str) -> tuple[dict[Any, Any], str]:  # pyright: ignore[reportExplicitAny]
+    def parse_frontmatter(self, txt:str) -> tuple[dict[str, Any], str]:  # pyright: ignore[reportExplicitAny]
         state:int = 0
         lines: list[str] = txt.split("\n")
         frontmatter_lines: list[str] = []
@@ -82,7 +89,7 @@ class MdTools:
             metadata = {}
         return metadata, content
 
-    def assemble_markdown(self, metadata: dict[Any, Any], content: str) -> str:
+    def assemble_markdown(self, metadata: dict[str, Any], content: str) -> str:  # pyright: ignore[reportExplicitAny]
         if metadata  == {}:
             return content
         header = yaml.dump(metadata, default_flow_style=False, indent=2)
@@ -157,7 +164,7 @@ class MdTools:
         if dt_stat is not None:
             return dt_stat
         return None
-
+    
     def minimal_frontmatter(self, note: dict[str, Any], filename: str) -> int:  # pyright: ignore[reportExplicitAny]
         changed = 0
         if "metadata" not in note:
@@ -186,7 +193,7 @@ class MdTools:
         else:
             if relative_folder == "Books":
                 if "tags" in note["metadata"]:
-                    tags: list[str] = note["metadata"]["tags"]  # pyright: ignore[reportUnknownVariableType]
+                    tags: list[str] = cast(list[str], note["metadata"]["tags"])
                     for tag in tags:
                         if tag.startswith("Series/"):
                             relative_folder: str = "Books/" + tag[7:]
@@ -201,13 +208,13 @@ class MdTools:
     # in fxsorm: `<!-- key1: value1; key2: value2; ... -->`
     # Returns a dict with tables, each table is a dict with columns and data and metadata
     ### XXX Frickel-Parser!
-    def parse_tables(self, content: str, filepath:str, note_uuid:str | None=None) -> list[Any]:  # pyright: ignore[reportExplicitAny]
-        tables = []
-        lines = content.split("\n")
+    def parse_tables(self, content: str, filepath:str, note_uuid:str | None=None) -> list[MDTable]:
+        tables: list[MDTable] = []
+        lines: list[str] = content.split("\n")
         table_state = 0
-        rows = []
-        columns = []
-        metadata = {}
+        rows: list[list[str]] = []
+        columns: list[str] = []
+        metadata: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
         for line in lines:
             line = line.strip()
             # XXX sloppy parser, fails on ;: at wrong places!
@@ -292,7 +299,7 @@ class MdTools:
                             elim_chars = ["*"]
                             for ec in elim_chars:
                                 subfolders = subfolders.replace(ec, "")
-                            subfolders.replace("__", "_")
+                            subfolders = subfolders.replace("__", "_")
                             if subfolders.endswith("_"):
                                 subfolders = subfolders[:-1]
                         else:
@@ -307,13 +314,14 @@ class MdTools:
                             metadata["domain"] = f"{subfolders}"
                         # if len(metadata.keys()) > 0:
                         #     print(f"Table metadata: {metadata}")
-                        table_entry: dict[str, str | list[str] | Any] = {  # pyright: ignore[reportExplicitAny]
+                        if note_uuid is None:
+                            note_uuid = ""
+                        table_entry: MDTable = {
                             "columns": columns,
                             "rows": rows,
                             "metadata": metadata,
+                            "note_uuid": note_uuid
                         }
-                        if note_uuid is not None:
-                            table_entry["note_uuid"] = note_uuid
                         tables.append(table_entry)
                     rows = []
                     columns = []
@@ -353,14 +361,9 @@ class MdTools:
             else:
                 note_uuid = ""
             note["tables"] = self.parse_tables(note["content"], filename, note_uuid)
-            self.note_cache_links(note)
+            _ = self.note_cache_links(note)
             if note["changes"] > 0:
-                self.write_note(filename, note)
-            # Reassemble the note  XXX can be removed:
-            # note_reassembled = self.assemble_markdown(note["metadata"], note["content"])
-            # if self.notes_differ(note_text, note_reassembled) > 0:
-            #     self.log.error(f"Error reassembling note from {filename}")
-            #     return None
+                _ = self.write_note(filename, note)
         return note
 
     def register_note(self, note_filename: str, note: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
@@ -439,25 +442,16 @@ class MdTools:
         self.log.info(f"Found {len(self.notes)} existing markdown notes")
         return
 
-    # def get_books(self):
-    #     self.books = []
-    #     for root, dirs, files in os.walk(self.notes_books_folder):
-    #         for file in files:
-    #             if file.endswith(".md"):
-    #                 self.books.append(os.path.join(root, file))
-    #     self.log.info(f"Found {len(self.books)} existing markdown notes on books")
-    #     return self.books
-
     def rename_note(
         self, current_filename: str, new_filename: str, update_links: bool = True, dry_run: bool = False
-    ):
+    ) -> int:
         if current_filename not in self.notes:
             self.log.error(f"Note {current_filename} not found")
-            return
-        note = self.notes[current_filename]  # pyright: ignore[reportAny]
+            return 0
+        note = self.notes[current_filename]
         if new_filename in self.notes:
             self.log.error(f"Note {new_filename} already exists")
-            return
+            return 0
         self.notes[new_filename] = note
         if dry_run is False:
             del self.notes[current_filename]
@@ -474,7 +468,7 @@ class MdTools:
             new_link = os.path.basename(new_filename)[:-3]
 
             for note_filename in self.notes:
-                note = self.notes[note_filename]
+                note: dict[str, Any] = self.notes[note_filename]  # pyright: ignore[reportExplicitAny]
                 if "content" in note:
                     content: str = note["content"]
                     new_content: list[str] = []
@@ -522,8 +516,8 @@ class MdTools:
                     if note_updated is True:
                         content_updates += 1
                         note["content"] = "\n".join(new_content) + "\n"
-                        self.note_cache_links(note)
-                        self.write_note(note_filename, note)
+                        _ = self.note_cache_links(note)
+                        _ = self.write_note(note_filename, note)
         return content_updates
 
     def md_filename(self, name: str):
@@ -539,24 +533,25 @@ class MdTools:
         return annotations_filename
 
     @staticmethod
-    def gen_markdown_header(clip):
+    def gen_markdown_header(clip: dict[str, Any]) -> str:  # pyright: ignore[reportExplicitAny]
         md = ""
         md += f"# Notes on {clip['title']}\n\n"
         md += f"_by {clip['author']}_\n\n"
-        ref = os.path.basename(clip["md_filename"])[:-3]
+        ref = os.path.basename(cast(str, clip["md_filename"]))[:-3]
         ref = ref.split(",")[0]
         md += f"see [[{ref}]]\n\n"
         if clip["warning"] is not None:
             md += f"Warning: {clip['warning']}\n\n"
         return md
 
-    def markdownify_clips(self, clips):
+    def markdownify_clips(self, clips:list[dict[str, Any]]):  # pyright: ignore[reportExplicitAny]
         md = ""
         for clip in clips:
             hd = MdTools.gen_markdown_header(clip)
-            if os.path.exists(clip["notes_filename"]):
-                print(f"File {clip['notes_filename']} already exists")
-                with open(clip["notes_filename"], "r") as f:
+            clip_filename: str = clip['notes_filename']
+            if os.path.exists(clip_filename):
+                print(f"File {clip_filename} already exists")
+                with open(clip_filename, "r") as f:
                     md = f.read()
                 if hd not in md:
                     print(
@@ -577,5 +572,5 @@ class MdTools:
             md += sub_header
             md += f"_on {clip['date']}:_\n\n"
             md += f"> {clip['content']}\n\n"
-            with open(clip["notes_filename"], "w") as f:
+            with open(clip_filename, "w") as f:
                 _ = f.write(md)

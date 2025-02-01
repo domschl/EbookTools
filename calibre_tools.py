@@ -32,7 +32,7 @@ class DocsEntry(TypedDict):
     hash: str
     hash_algo: str
     mod_time: float
-    ref_name: str | None
+    ref_name: str
 
 
 class CalibreLibEntry(TypedDict):
@@ -56,7 +56,7 @@ class CalibreLibEntry(TypedDict):
     doc_text: str
     docs: list[DocsEntry]
     formats: list[str]
-    repo_path: list[str] | None
+    repo_path: list[str]
 
 
 class RepoState(TypedDict):
@@ -377,7 +377,7 @@ class CalibreTools:
                                     "hash": hash,
                                     "hash_algo": hash_algo,
                                     "mod_time": mod_time,
-                                    "ref_name": None,
+                                    "ref_name": "",
                                 }
                             )
                     entry["doc_text"] = doc_text
@@ -746,7 +746,7 @@ class CalibreTools:
             )
         return lib_entries, sequence_number
 
-    def check_state_change(self, target_path):
+    def check_state_change(self, target_path: str) -> bool:
         repo_state_filename = os.path.join(target_path, "repo_state.json")
         if not os.path.exists(repo_state_filename):
             self.log.error(f"State file not found at {repo_state_filename}")
@@ -788,12 +788,11 @@ class CalibreTools:
     def export_calibre_metadata_to_markdown(
         self,
         notes,
-        output_path,
-        max_entries=None,
-        cover_rel_path=None,
-        dry_run=False,
-        delete=False,
-    ):
+        output_path:str,
+        cover_rel_path:str | None = None,
+        dry_run: bool = False,
+        delete: bool = False,
+    ) -> tuple[int, int, int]:
         output_path = os.path.expanduser(output_path)
         if not os.path.exists(output_path) and dry_run is not True:
             self.log.info(f"Creating output path {output_path}")
@@ -876,35 +875,35 @@ class CalibreTools:
                 "publication_date",
             ]
             md += "tags:\n  - Library/Calibre\n"
-            if "series" in entry.keys() and entry["series"] is not None:
+            if "series" in entry.keys() and entry["series"] != "":
                 ser = entry["series"].replace(" ", "_")
                 md += f"  - Series/{ser}\n"
-            if "subjects" in entry.keys() and entry["subjects"] is not None:
+            if "subjects" in entry.keys() and len(entry["subjects"]) > 0:
                 tags = entry["subjects"]
                 for tag in tags:
                     filt_tag = tag.strip().replace(" ", "_")
                     md += f"  - {filt_tag}\n"
-            if "formats" in entry.keys() and entry["formats"] is not None:
+            if "formats" in entry.keys() and len(entry["formats"]) > 0:
                 md += "formats:\n"
                 formats = entry["formats"]
                 for format in formats:
                     md += f"  - {format.strip()}\n"
             if (
                 "publication_date" in entry.keys()
-                and entry["publication_date"] is not None
+                and entry["publication_date"] != ""
             ):
                 md += f"publication_date: {entry['publication_date']}\n"
-            if "languages" in entry.keys() and entry["languages"] is not None:
+            if "languages" in entry.keys() and len(entry["languages"]) > 0:
                 md += "languages:\n"
                 languages = entry["languages"]
                 for lang in languages:
                     md += f"  - {lang.strip()}\n"
-            if "identifiers" in entry.keys() and entry["identifiers"] is not None:
+            if "identifiers" in entry.keys() and len(entry["identifiers"]) > 0:
                 md += "identifiers:\n"
                 ids = entry["identifiers"]
                 for id in ids:
                     md += f"  - {id.strip()}\n"
-            if "calibre_id" in entry.keys() and entry["calibre_id"] is not None:
+            if "calibre_id" in entry.keys() and entry["calibre_id"] != "":
                 md += f"calibre_id: {entry['calibre_id']}\n"
             string_fields = ["title_sort", "publisher"]
             for field in entry.keys():
@@ -914,7 +913,7 @@ class CalibreTools:
                     and entry[field] is not None
                 ):
                     if field in string_fields:
-                        fld = entry[field].replace('"', "'")
+                        fld: str = str(entry[field]).replace('"', "'")
                         md += f'{field}: "{fld}"\n'
                     else:
                         md += f"{field}: {entry[field]}\n"
@@ -930,9 +929,9 @@ class CalibreTools:
                     md += ", "
                 md += f"{author}"
             md += "_\n\n"
-            if "calibre_id" in entry.keys() and entry["calibre_id"] is not None:
+            if "calibre_id" in entry.keys() and entry["calibre_id"] != "":
                 md += f"[Calibre-link]({self._gen_md_calibre_link(entry['calibre_id'])})\n\n"
-            if "cover" in entry.keys() and entry["cover"] is not None:
+            if "cover" in entry.keys() and entry["cover"] != "":
                 if dry_run is False:
                     cover_path = self._gen_thumbnail(
                         entry["cover"],
@@ -942,7 +941,7 @@ class CalibreTools:
                         force=False,
                     )
                     md += f"![{sanitized_title}]({cover_path})\n\n"
-            if "description" in entry.keys() and entry["description"] is not None:
+            if "description" in entry.keys() and entry["description"] != "":
                 html_text = entry["description"]
                 # Convert HTML to markdown
                 md_tokens = [
@@ -984,7 +983,7 @@ class CalibreTools:
             if entry["uuid"] in notes.uuid_to_note_filename:
                 uuid_exists = True
                 if entry["uuid"] in existing_notes_uuids:
-                    old_filename = notes.uuid_to_note_filename[entry["uuid"]]
+                    old_filename: str = notes.uuid_to_note_filename[entry["uuid"]]
                     if old_filename != md_filename:
                         self.log.warning(
                             f"Note {old_filename} was renamed to {md_filename}"
@@ -1004,7 +1003,7 @@ class CalibreTools:
                         if md_filename in existing_notes_filenames:
                             del existing_notes_filenames[md_filename]
                         if entry["uuid"] in existing_notes_uuids:
-                            old_filename = existing_notes_uuids[entry["uuid"]]
+                            old_filename: str = existing_notes_uuids[entry["uuid"]]
                             del existing_notes_uuids[entry["uuid"]]
                             if old_filename != md_filename:
                                 self.log.error(
@@ -1018,8 +1017,6 @@ class CalibreTools:
                 else:
                     self.log.info(f"Would write file {md_filename}")
                 n += 1
-                if n == max_entries:
-                    break
         if len(existing_notes_filenames) > 0:
             self.log.warning(
                 f"Found {len(existing_notes_filenames)} existing notes that are not in the library"
