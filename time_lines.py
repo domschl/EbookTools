@@ -7,8 +7,8 @@ from typing import TypedDict, Any, cast
 
 from indralib.indra_time import IndraTime, IndraTimeInterval  # pyright: ignore[reportMissingTypeStubs]
 from indralib.indra_event import IndraEvent  # pyright: ignore[reportMissingTypeStubs]
-from .calibre_tools import CalibreLibEntry
-from .md_tools import MDTable, MdTools
+from calibre_tools import CalibreLibEntry
+from md_tools import MDTable, MdTools
 
 
 class TimeLineEvent(TypedDict):
@@ -434,8 +434,11 @@ class TimeLines:
         last_start_time = None
         last_end_time = None
         table_sorted = True
-        for row in table["rows"]:
+        for index, row in enumerate(table["rows"]):
             raw_date = row[0]
+            if raw_date == 'Date' or (raw_date.startswith('-') and raw_date.endswith('-')):
+                print(f"Table restarted in the middle! {table["columns"]} at row {index}: {raw_date}")
+                continue
             try:
                 jd_date = IndraTime.string_time_to_julian(raw_date)
                 if jd_date is None:

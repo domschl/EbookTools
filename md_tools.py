@@ -76,7 +76,7 @@ class MdTools:
                 else:
                     frontmatter_lines.append(line)
             elif state == 2:
-                if len(content) == 0:
+                if len(content_lines) == 0:
                     if line == "":
                         continue
                 content_lines.append(line)
@@ -243,12 +243,18 @@ class MdTools:
             if table_state == 0:
                 if line.startswith("```"):
                     if line.lower().startswith("```indraevent"):
+                        columns = []
+                        rows = []
                         table_state = 6
                     else:
+                        columns = []
+                        rows = []
                         table_state = 4
                     continue
                 if line.startswith("$$"):  # start of latex block
                     table_state = 5
+                    columns = []
+                    rows = []
                     continue
                 if line.startswith("|"):
                     if not line.endswith("|"):
@@ -258,6 +264,8 @@ class MdTools:
                         return tables
                     table_state = 1
                     columns = [col.strip() for col in line[1:].split("|")][:-1]
+                    rows = []
+                    continue
             elif table_state == 1:
                 if line.startswith("|"):
                     for c in line:
@@ -268,14 +276,20 @@ class MdTools:
                             metadata = {}
                             continue
                     table_state = 2
+                    continue
                 else:
                     columns = []
                     rows = []
                     metadata = {}
                     table_state = 0
+                    continue
             elif table_state == 2:
                 if line.startswith("|"):
-                    rows.append([col.strip() for col in line[1:].split("|")][:-1])
+                    row = [col.strip() for col in line[1:].split("|")][:-1]
+                    if len(row)>0 and row[0] == "Date":
+                        print(f"Bad line in middle of table: {line}")
+                    rows.append(row)
+                    continue
                 else:
                     table_state = 0
                     subfolders = None
@@ -326,15 +340,27 @@ class MdTools:
                     rows = []
                     columns = []
                     metadata = {}
+                    continue
             elif table_state == 4:
                 if line.startswith("```"):
                     table_state = 0
+                    rows = []
+                    columns = []
+                    metadata = {}
+                    continue
             elif table_state == 5:
                 if line.startswith("$$"):  # end of latex block
                     table_state = 0
+                    rows = []
+                    columns = []
+                    metadata = {}
+                    continue
             elif table_state == 6:
                 if line.startswith("```"):
                     table_state = 0
+                    rows = []
+                    columns = []
+                    metadata = {}
                 else:
                     meta = line.split("=", 1)
                     if len(meta) == 2:
@@ -343,6 +369,7 @@ class MdTools:
                         if val.startswith('"') and val.endswith('"'):
                             val = val[1:-1]
                         metadata[key] = val
+                continue
         return tables
 
     def read_md_file(self, filename: str) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
