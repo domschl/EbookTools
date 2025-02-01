@@ -6,11 +6,11 @@ import os
 import json
 import argparse
 from argparse import ArgumentParser
-from typing import TypedDict
+from typing import TypedDict, cast, Any
 
 from calibre_tools import CalibreTools
 from kindle_tools import KindleTools
-from md_tools import MdTools
+from md_tools import MdTools, MDTable
 from indra_tools import IndraTools
 from metadata import Metadata
 from time_lines import TimeLines
@@ -65,6 +65,7 @@ if __name__ == "__main__":
     _ = parser.add_argument(
         "action",
         nargs="*",
+        default="",
         help="Action: export, notes, kindle, indra, meta, timeline, bookdates",
     )
     _ = parser.add_argument(
@@ -120,20 +121,22 @@ if __name__ == "__main__":
     # )
     args = parser.parse_args()
 
+    action = cast(str, args.action)
     # Set options
-    dry_run: bool = args.dry_run  # pyright: ignore[reportAny]
-    delete: bool = args.delete  # pyright: ignore[reportAny]
-    interactive: bool = not args.non_interactive  # pyright: ignore[reportAny]
-    do_export: bool = "export" in args.action  # pyright: ignore[reportAny]
-    do_notes: bool = "notes" in args.action  # pyright: ignore[reportAny]
-    do_kindle: bool = "kindle" in args.action  # pyright: ignore[reportAny]
-    do_indra: bool = "indra" in args.action  # pyright: ignore[reportAny]
-    do_meta: bool = "meta" in args.action  # pyright: ignore[reportAny]
-    do_timeline: bool = "timeline" in args.action  # pyright: ignore[reportAny]
-    do_bookdates: bool = "bookdates" in args.action  # pyright: ignore[reportAny]
+    dry_run: bool = cast(bool, args.dry_run)
+    delete: bool = cast(bool, args.delete)
+    interactive: bool = not cast(bool, args.non_interactive)
+    do_export: bool = "export" in action
+    do_notes: bool = "notes" in action
+    do_kindle: bool = "kindle" in action
+    do_indra: bool = "indra" in action
+    do_meta: bool = "meta" in action
+    do_timeline: bool = "timeline" in action
+    do_bookdates: bool = "bookdates" in action
     do_date_stuff: bool = (do_bookdates is True or do_timeline is True)
+    use_sha256 = cast(bool, args.SHA256)
 
-    if args.execute is False:  # pyright: ignore[reportAny]
+    if cast(bool, args.execute) is False:
         dry_run = True
 
     if (
@@ -210,7 +213,7 @@ if __name__ == "__main__":
         logger.info(
             f"Calibre Library {calibre.calibre_path}, loading and parsing XML metadata"
         )
-        lastest_mod_time = calibre.load_calibre_library_metadata(progress=interactive, use_sha256=args.SHA256, load_text=do_date_stuff)
+        lastest_mod_time = calibre.load_calibre_library_metadata(progress=interactive, use_sha256=use_sha256, load_text=do_date_stuff)
         logger.info("Calibre Library loaded")
     else:
         calibre = None
@@ -222,7 +225,7 @@ if __name__ == "__main__":
             format=export_formats,
             dry_run=dry_run,
             delete=delete,
-            vacuum=args.vacuum,
+            vacuum= cast(bool, args.vacuum),
         )
         logger.info(
             f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"
@@ -230,10 +233,10 @@ if __name__ == "__main__":
         if book_text_lib != "" and os.path.exists(book_text_lib):
             txt_books, upd_txt_books, txt_debris = calibre.export_calibre_books(
                 book_text_lib,
-                format=".txt",
+                format=[".txt"],
                 dry_run=dry_run,
                 delete=delete,
-                vacuum=args.vacuum,
+                vacuum=cast(bool, args.vacuum),
             )
 
     if do_notes is True or do_indra is True or do_date_stuff is True:
@@ -247,8 +250,9 @@ if __name__ == "__main__":
         table_cnt = 0
         metadata_cnt = 0
         for note_name in notes.notes:
-            note = notes.notes[note_name]
-            for table in note["tables"]:
+            note: dict[str, Any] = notes.notes[note_name]  # pyright: ignore[reportExplicitAny]
+            tables: list[MDTable] = note["tables"]
+            for table in tables:
                 if "metadata" in table and len(table["metadata"].keys()) > 0:
                     metadata_cnt += 1
                 table_cnt += 1
@@ -263,13 +267,17 @@ if __name__ == "__main__":
             indra = IndraTools()
 
     if do_date_stuff is True:
-        if calibre is not None:
-            timelines.add_book_events(calibre.lib_entries)
-        if notes is not None:
+        if calibre is not None and timelines is not None:
+            _ = timelines.add_book_events(calibre.lib_entries)
+        if notes is not None and timelines is not None:
             timelines.add_notes_events(notes)
-            timelines.notes_rest(do_timeline, args.format.lower(), args.time, args.domains, args.keywords)
+            format_spec = cast(str, args.format).lower()
+            time_spec = cast(str, args.time)
+            domains_spec = cast(str, args.domains)
+            keywords_spec = cast(str, args.keywords)
+            timelines.notes_rest(do_timeline, format_spec, time_spec, domains_spec, keywords_spec)
 
-    if calibre is not None and do_notes is True:
+    if calibre is not None and do_notes is True and notes is not None:
         logger.info(f"Exporting metadata to {notes_books_path}")
         n, errs, content_updates = calibre.export_calibre_metadata_to_markdown(
             notes,
@@ -283,7 +291,7 @@ if __name__ == "__main__":
 
     if do_kindle is True:
         kindle = KindleTools()
-        clippings = []
+        clippings: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
         if kindle.check_for_connected_kindle() is False:
             logger.error("No Kindle connected!")
             # enumerate txt files in kindle_path
@@ -292,11 +300,17 @@ if __name__ == "__main__":
                     if file.endswith(".txt"):
                         kindle_path = os.path.join(root, file)
                         clippings_text = kindle.get_clippings_text(kindle_path)
-                        clippings.append(kindle.parse_clippings(clippings_text))
+                        if clippings_text is not None:
+                             clips = kindle.parse_clippings(clippings_text)
+                             if clips is not None:
+                                  clippings += clips
         else:
             clippings_text = kindle.get_clippings_text()
-            clippings = kindle.parse_clippings(clippings_text)
-        if clippings is None or len(clippings) == 0:
+            if clippings_text is not None:
+                 clips = kindle.parse_clippings(clippings_text)
+                 if clips is not None:
+                      clippings += clips
+        if len(clippings) == 0:
             logger.error("No clippings found, something went wrong...")
             exit(1)
 

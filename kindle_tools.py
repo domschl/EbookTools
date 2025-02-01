@@ -4,6 +4,7 @@ import sys
 import datetime
 
 from kindle_tools_localization import kindle_kw_locales
+from typing import cast, Any
 
 
 class KindleTools:
@@ -17,9 +18,9 @@ class KindleTools:
     """
 
     def __init__(self):
-        self.log = logging.getLogger("KindleTools")
-        self.mount_folder = None
-        self.clippings = []
+        self.log: logging.Logger = logging.getLogger("KindleTools")
+        self.mount_folder: str | None = None
+        self.clippings: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
 
     def check_for_connected_kindle(self):
         if sys.platform == "darwin":
@@ -38,7 +39,7 @@ class KindleTools:
             self.log.error("Kindle not connected")
             return False
 
-    def get_clippings_text(self, local_file=None):
+    def get_clippings_text(self, local_file: str | None = None):
         if local_file:
             clippings_file = os.path.expanduser(local_file)
         else:
@@ -59,26 +60,30 @@ class KindleTools:
             clippings_text = f.read().decode("utf-8-sig").replace("\ufeff", "")
         return clippings_text
 
-    def get_clipping_locale(self, clipping_text):
+    def get_clipping_locale(self, clipping_text: str):
         for locale_name in kindle_kw_locales:
             locale = kindle_kw_locales[locale_name]
             for line in clipping_text.split("\n"):
+                ls = cast(str, locale["info_line_start"])
+                ds = cast(str, locale["info_line_date_start"])
+                tls = cast(str, locale["info_line_type_loc_sep"])
+                lps = cast(str, locale["info_line_page_sep"])
                 if (
-                    line.startswith(locale["info_line_start"])
-                    and line.find(locale["info_line_date_start"]) > 0
+                    line.startswith(ls)
+                    and line.find(ds) > 0
                     and (
-                        line.find(locale["info_line_type_loc_sep"]) > 0
-                        or line.find(locale["info_line_page_sep"]) > 0
+                        line.find(tls) > 0
+                        or line.find(lps) > 0
                     )
                 ):
                     return locale_name, locale
         return None, None
 
-    def parse_clippings(self, clippings_text):
+    def parse_clippings(self, clippings_text: str):
         self.clippings = []
         for clipping in clippings_text.split("=========="):
             clipping = clipping.strip()
-            if not clipping or clipping == "":
+            if clipping == "":
                 continue
             print(clipping)
             lines = clipping.split("\n")
@@ -126,50 +131,56 @@ class KindleTools:
                 # No page number
                 page_no = None
                 type_location = type_location_date[0].strip()
+                lds = cast(str, locale["info_line_date_start"])
                 date = (
                     type_location_date[1]
-                    .replace(locale["info_line_date_start"], "")
+                    .replace(lds, "")
                     .strip()
                 )
-                if locale["info_line_type_loc_sep"] in type_location:
+                tls = cast(str, locale["info_line_type_loc_sep"])
+                ls = cast(str, locale["info_line_start"]) 
+                if tls in type_location:
                     # separate the type and location
-                    type_location_parts = type_location.split(
-                        locale["info_line_type_loc_sep"]
-                    )
+                    type_location_parts = type_location.split(tls)
                     clipping_type = (
                         type_location_parts[0]
-                        .replace(locale["info_line_start"], "")
+                        .replace(ls, "")
                         .strip()
                     )
                     clipping_location = type_location_parts[1].strip()
                 else:
-                    type_page_parts = type_location.split(locale["info_line_page_sep"])
+                    lps = cast(str, locale["info_line_page_sep"])
+                    type_page_parts = type_location.split(lps)
                     clipping_type = (
                         type_page_parts[0]
-                        .replace(locale["info_line_start"], "")
+                        .replace(ls, "")
                         .strip()
                     )
                     page_no = type_page_parts[1].strip()
             elif len(type_location_date) == 3:
                 # With page number
+                lds = cast(str, locale["info_line_date_start"])
                 date = (
                     type_location_date[2]
-                    .replace(locale["info_line_date_start"], "")
+                    .replace(lds, "")
                     .strip()
                 )
                 type_page = type_location_date[0].strip()
-                comps = type_page.split(locale["info_line_page_sep"])
+                lps = cast(str, locale["info_line_page_sep"])
+                comps = type_page.split(lps)
                 page_no = comps[1].strip()
                 type_location = (
                     type_location_date[1]
                     .strip()
-                    .replace(locale["info_line_page_sep"], "")
+                    .replace(lps, "")
                 )
-                clipping_type = comps[0].replace(locale["info_line_start"], "").strip()
+                ls = cast(str, locale["info_line_start"]) 
+                clipping_type = comps[0].replace(ls, "").strip()
+                tls = cast(str, locale["info_line_type_loc_sep"])
                 clipping_location = (
                     type_location_date[1]
                     .strip()
-                    .replace(locale["info_line_type_loc_sep"], "")
+                    .replace(tls, "")
                 )
             else:
                 self.log.error(f"Could not parse type, location, date: {type_location_date}")
@@ -181,7 +192,8 @@ class KindleTools:
                 # Tuesday, 28 March 2023 13:48:18
                 date_parts = date.split(" ")
                 day = int(date_parts[1])
-                month = locale["months"].index(date_parts[2]) + 1
+                months_list: list[str] = cast(list[str], locale["months"])
+                month = months_list.index(date_parts[2]) + 1
                 year = date_parts[3]
                 time = date_parts[4]
                 iso_date_local = f"{year}-{month:02d}-{day:02d}T{time}"
@@ -197,7 +209,8 @@ class KindleTools:
                 date_parts = date.split(" ")
                 print(date_parts)
                 day = int(date_parts[1][:-1])
-                month = locale["months"].index(date_parts[2]) + 1
+                months_list = cast(list[str], locale["months"])
+                month = months_list.index(date_parts[2]) + 1
                 year = date_parts[3]
                 time = date_parts[4]
                 iso_date_local = f"{year}-{month:02d}-{day:02d}T{time}"

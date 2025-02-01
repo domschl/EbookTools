@@ -13,10 +13,11 @@ import zlib
 import base64
 from PIL import Image  # type: ignore
 from bs4 import BeautifulSoup  # type:ignore ## pip install beautifulsoup4
-from typing import TypedDict
+from typing import TypedDict, Any, cast
 
 from ebook_utils import sanitized_md_filename, progress_bar_string
 from calibre_tools_localization import calibre_prefixes
+from md_tools import MdTools
 
 # Disable MarkupResemblesLocatorWarning
 from bs4 import MarkupResemblesLocatorWarning
@@ -57,6 +58,7 @@ class CalibreLibEntry(TypedDict):
     docs: list[DocsEntry]
     formats: list[str]
     repo_path: list[str]
+    calibre_bookmarks: list[Any] | None  # pyright: ignore[reportExplicitAny]
 
 
 class RepoState(TypedDict):
@@ -64,7 +66,13 @@ class RepoState(TypedDict):
     sequence_number: int
     timestamp: str
 
-    
+
+class KOReaderMetadataEntry(TypedDict):
+    folder: str
+    formats: list[str]
+    metadata: list[dict[str, Any]]  # pyright: ignore[reportExplicitAny]
+
+
 class CalibreTools:
     """ "Tools to manage Calibre library metadata and export to markdown
 
@@ -342,6 +350,7 @@ class CalibreTools:
                         "docs": [],
                         "formats": [],
                         "repo_path": [],
+                        "calibre_bookmarks": None,
                     }
                     if "cover.jpg" in files:
                         entry["cover"] = os.path.join(root, "cover.jpg")
@@ -452,7 +461,7 @@ class CalibreTools:
                     #     return latest_mod_time
         return latest_mod_time
 
-    def check_epub_calibre_bookmarks(self, epub_path: str, entry, dry_run:bool=False):
+    def check_epub_calibre_bookmarks(self, epub_path: str, entry: CalibreLibEntry, dry_run:bool=False):
         # Open epub and look if META-INF/calibre_bookmarks.txt exists
         # if yes, parse it (base64/json) and (TBD) add to entry
         with zipfile.ZipFile(epub_path, "r") as z:
@@ -480,7 +489,7 @@ class CalibreTools:
                     reader.close()
                     return
                 try:
-                    bookmarks = json.loads(bookmarks_jsonstr)
+                    bookmarks: list[Any] | None = json.loads(bookmarks_jsonstr)  # pyright: ignore[reportExplicitAny]
                 except Exception as e:
                     self.log.error(
                         f"Error parsing json calibre-bookmarks for {entry['title']}, {bookmarks_jsonstr}: {e}"
@@ -518,7 +527,7 @@ class CalibreTools:
         dry_run: bool = False,
         delete: bool = False,
         vacuum: bool = False,
-    ):
+    ) -> tuple[int, int, int]:
         target = os.path.expanduser(target_path)
         self.old_lib_entries, self.sequence_number = self.load_state(target)
         if len(self.lib_entries) == 0:
@@ -528,13 +537,13 @@ class CalibreTools:
         new_docs = 0
         upd_docs = 0
         debris = 0
-        upd_doc_names = []
+        upd_doc_names: list[str] = []
         if not os.path.exists(target) and dry_run is not True:
             self.log.info(f"Creating target path {target}")
             os.makedirs(target)
         # Enumerate all files in target:
         target_existing: list[str] = []
-        koreader_metadata = {}
+        koreader_metadata: dict[str, KOReaderMetadataEntry] = {}
         for root, dirs, files in os.walk(target):
             # if root is a dot dir, ignore
             if os.path.basename(root).startswith("."):
@@ -787,7 +796,7 @@ class CalibreTools:
 
     def export_calibre_metadata_to_markdown(
         self,
-        notes,
+        notes: MdTools,
         output_path:str,
         cover_rel_path:str | None = None,
         dry_run: bool = False,
@@ -812,17 +821,17 @@ class CalibreTools:
             )
             return 0, 1, content_updates
 
-        existing_notes_filenames = {}
-        existing_notes_uuids = {}
+        existing_notes_filenames: dict[str, str] = {}
+        existing_notes_uuids: dict[str, str] = {}
         for note_filename in notes.notes:
             if note_filename.startswith(output_path):
-                uuid = None
+                uuid = ""
                 if (
                     "metadata" in notes.notes[note_filename]
                     and "uuid" in notes.notes[note_filename]["metadata"]
                 ):
-                    uuid = notes.notes[note_filename]["metadata"]["uuid"]
-                if uuid is not None:
+                    uuid: str = notes.notes[note_filename]["metadata"]["uuid"]
+                if uuid != "":
                     existing_notes_filenames[note_filename] = uuid
                     existing_notes_uuids[uuid] = note_filename
                 else:
@@ -913,7 +922,7 @@ class CalibreTools:
                     and entry[field] is not None
                 ):
                     if field in string_fields:
-                        fld: str = str(entry[field]).replace('"', "'")
+                        fld: str = cast(str, entry[field]).replace('"', "'")
                         md += f'{field}: "{fld}"\n'
                     else:
                         md += f"{field}: {entry[field]}\n"
@@ -983,7 +992,7 @@ class CalibreTools:
             if entry["uuid"] in notes.uuid_to_note_filename:
                 uuid_exists = True
                 if entry["uuid"] in existing_notes_uuids:
-                    old_filename: str = notes.uuid_to_note_filename[entry["uuid"]]
+                    old_filename = notes.uuid_to_note_filename[entry["uuid"]]
                     if old_filename != md_filename:
                         self.log.warning(
                             f"Note {old_filename} was renamed to {md_filename}"
@@ -1003,7 +1012,7 @@ class CalibreTools:
                         if md_filename in existing_notes_filenames:
                             del existing_notes_filenames[md_filename]
                         if entry["uuid"] in existing_notes_uuids:
-                            old_filename: str = existing_notes_uuids[entry["uuid"]]
+                            old_filename = existing_notes_uuids[entry["uuid"]]
                             del existing_notes_uuids[entry["uuid"]]
                             if old_filename != md_filename:
                                 self.log.error(
@@ -1013,7 +1022,7 @@ class CalibreTools:
             if os.path.exists(md_filename) is False and uuid_exists is False:
                 if dry_run is False:
                     with open(md_filename, "w") as f:
-                        f.write(md)
+                        _ = f.write(md)
                 else:
                     self.log.info(f"Would write file {md_filename}")
                 n += 1
