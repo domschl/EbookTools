@@ -126,57 +126,6 @@ class TimeLines:
                 keywords = [keywords]
         result: list[TimeLineEvent] = []
         for event in self.tl_events:
-            if keywords is None:
-                b_keywords = True
-            else:
-                b_keywords = False
-                event_keys: list[str] = []
-                for k in event['eventdata']:
-                    val = event['eventdata'][k]  # pyright: ignore[reportAny]
-                    val_txt = f"{val}"
-                    event_keys += [k, val_txt]
-                for k in event['metadata']:
-                    val = event['metadata'][k]  # pyright: ignore[reportAny]
-                    val_txt = f"{val}"
-                    event_keys += [k, val_txt]
-                try:
-                    event_keys_txt = ' '.join(event_keys)
-                except Exception as e:
-                    self.log.error(f"couldn't join [Err: {e}], event_keys: {event_keys}")
-                    exit(1)
-                b_keywords = self.search_keys(event_keys_txt, keywords)
-            if not b_keywords:
-                continue
-            if domains is None:
-                b_domains = True
-            else:
-                b_domains = False
-                pos_dom = False
-                meta_domain = cast(str, event['metadata']["domain"]).lower()
-                for domain in domains:
-                    if domain.startswith("!"):
-                        continue
-                    pos_dom = True
-                    if domain.lower() in meta_domain or IndraEvent.mqcmp(
-                        domain.lower(), meta_domain
-                    ):
-                        b_domains = True
-                        break
-                if pos_dom is False:
-                    b_domains = True
-                if b_domains is True:
-                    for domain in domains:
-                        if domain.startswith("!") is False:
-                            continue
-                        else:
-                            domain = domain[1:]
-                        if domain.lower() in meta_domain or IndraEvent.mqcmp(
-                            domain.lower(), meta_domain
-                        ):
-                            b_domains = False
-                            break
-            if not b_domains:
-                continue
             if time is not None and start_time is not None:
                 b_time = False
                 event_start = event['jd_event'][0]
@@ -209,6 +158,57 @@ class TimeLines:
                                 b_time = True
                 if not b_time:
                     continue
+            if domains is None:
+                b_domains = True
+            else:
+                b_domains = False
+                pos_dom = False
+                meta_domain = cast(str, event['metadata']["domain"]).lower()
+                for domain in domains:
+                    if domain.startswith("!"):
+                        continue
+                    pos_dom = True
+                    if domain.lower() in meta_domain or IndraEvent.mqcmp(
+                        domain.lower(), meta_domain
+                    ):
+                        b_domains = True
+                        break
+                if pos_dom is False:
+                    b_domains = True
+                if b_domains is True:
+                    for domain in domains:
+                        if domain.startswith("!") is False:
+                            continue
+                        else:
+                            domain = domain[1:]
+                        if domain.lower() in meta_domain or IndraEvent.mqcmp(
+                            domain.lower(), meta_domain
+                        ):
+                            b_domains = False
+                            break
+            if not b_domains:
+                continue
+            if keywords is None:
+                b_keywords = True
+            else:
+                b_keywords = False
+                event_keys: list[str] = []
+                for k in event['eventdata']:
+                    val = event['eventdata'][k]  # pyright: ignore[reportAny]
+                    val_txt = f"{val}"
+                    event_keys += [k, val_txt]
+                for k in event['metadata']:
+                    val = event['metadata'][k]  # pyright: ignore[reportAny]
+                    val_txt = f"{val}"
+                    event_keys += [k, val_txt]
+                try:
+                    event_keys_txt = ' '.join(event_keys)
+                except Exception as e:
+                    self.log.error(f"couldn't join [Err: {e}], event_keys: {event_keys}")
+                    exit(1)
+                b_keywords = self.search_keys(event_keys_txt, keywords)
+            if not b_keywords:
+                continue
             result.append(event)
         return result
 
@@ -549,8 +549,6 @@ class TimeLines:
         if do_timeline is True:
             if format != "ascii":
                 format = None
-            else:
-                format = "ascii"
             time_par = timespec
             if time_par is not None:
                 if time_par == "":

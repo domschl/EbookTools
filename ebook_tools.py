@@ -57,7 +57,7 @@ if __name__ == "__main__":
         help="Delete files that are debris, DANGER, test first with -d",
     )
     _ = parser.add_argument(
-        "-np",
+        "-n",
         "--non-interactive",
         action="store_true",
         help="Non-interactive mode, do not show progress bars",
@@ -275,6 +275,7 @@ if __name__ == "__main__":
             time_spec = cast(str, args.time)
             domains_spec = cast(str, args.domains)
             keywords_spec = cast(str, args.keywords)
+            print(f"Format: {format_spec}, time: {time_spec}")
             timelines.notes_rest(do_timeline, format_spec, time_spec, domains_spec, keywords_spec)
 
     if calibre is not None and do_notes is True and notes is not None:
