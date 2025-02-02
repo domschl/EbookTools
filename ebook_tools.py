@@ -231,13 +231,18 @@ if __name__ == "__main__":
             f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"
         )
         if book_text_lib != "" and os.path.exists(book_text_lib):
+            logger.info(f"Calibre Library {calibre.calibre_path}, copying text books")
             txt_books, upd_txt_books, txt_debris = calibre.export_calibre_books(
                 book_text_lib,
-                format=[".txt"],
+                format=["txt"],
                 dry_run=dry_run,
                 delete=delete,
                 vacuum=cast(bool, args.vacuum),
             )
+            logger.info(
+                f"Calibre Library {calibre.calibre_path} export: {txt_books} new books, {upd_txt_books} updated books, {txt_debris} debris"
+            )
+            
 
     if do_notes is True or do_indra is True or do_date_stuff is True:
         logger.info(f"Loading notes from {notes_path}")
