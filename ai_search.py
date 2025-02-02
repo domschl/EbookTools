@@ -27,6 +27,9 @@ class EmbeddingSearch:
         self.embeddings_path: str = e_path
         _ = self.load_text_embeddings()
         _ = self.load_repos()
+        # Disable verbose Ollama:
+        murks_logger = logging.getLogger("httpx")
+        murks_logger.setLevel(logging.ERROR)
 
     def load_repos(self, silent: bool = True) -> int:
         repo_file = os.path.join(self.embeddings_path, 'repos_embeddings.json')
@@ -121,6 +124,8 @@ class EmbeddingSearch:
         last_save = time.time()
         if self.texts is None:
             return
+        cnt: int = 0
+        max_cnt = len(self.texts.keys())
         for desc in self.texts:
             if desc.startswith(lib_desc):
                 if self.texts[desc]['embedding_generator'] == "":
@@ -137,13 +142,12 @@ class EmbeddingSearch:
                             embeddings: numpy.typing.NDArray[np.float32] = np.array([embedding], dtype=np.float32)
                         else:
                             embeddings = np.append(embeddings, np.array([embedding], dtype=np.float32), axis=0)
-                        print(".", end="")
-                    print()   
                     self.texts[desc]['embedding'] = embeddings
                     self.texts[desc]['embedding_generator'] = model
                     # del self.texts[desc]['text']
+                    cnt += 1
                     if verbose is True:
-                         print(f"Generated {self.texts[desc]['embedding'].shape[0]} embeddings for {desc}")
+                         print(f"Generated {cnt}/{max_cnt}: {self.texts[desc]['embedding'].shape[0]} embeddings for {desc}")
                     if save_every_sec is not None:
                         if time.time() - last_save > save_every_sec:
                             self.save_text_embeddings()

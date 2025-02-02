@@ -14,6 +14,7 @@ from md_tools import MdTools, MDTable
 from indra_tools import IndraTools
 from metadata import Metadata
 from time_lines import TimeLines
+from ai_search import EmbeddingSearch
 
 
 class ConfigDict(TypedDict):
@@ -22,7 +23,6 @@ class ConfigDict(TypedDict):
      meta_path: str
      book_text_lib: str
      notes_path: str
-     # notes_books_path: str
      notes_books_subfolder: str
      book_text_lib_embeddings: str
      embeddings_model: str
@@ -66,7 +66,7 @@ if __name__ == "__main__":
         "action",
         nargs="*",
         default="",
-        help="Action: export, notes, kindle, indra, meta, timeline, bookdates",
+        help="Action: export, notes, kindle, indra, meta, timeline, bookdates, embed",
     )
     _ = parser.add_argument(
         "-t",
@@ -133,6 +133,7 @@ if __name__ == "__main__":
     do_meta: bool = "meta" in action
     do_timeline: bool = "timeline" in action
     do_bookdates: bool = "bookdates" in action
+    do_embed: bool = "embed" in action
     do_date_stuff: bool = (do_bookdates is True or do_timeline is True)
     use_sha256 = cast(bool, args.SHA256)
 
@@ -146,6 +147,7 @@ if __name__ == "__main__":
         and do_indra is False
         and do_meta is False
         and do_bookdates is False
+        and do_embed is False
     ):
         logger.error("No action specified, exiting, use -h for help")
         exit(1)
@@ -341,5 +343,12 @@ if __name__ == "__main__":
                         m_oks += 1
                         # print(meta)
         logger.info(f"Processed metadata, ok={m_oks}, errors={m_errs}")
+    if do_embed is True:
+         emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
+         logger.info(f"Loading text library: {book_text_lib}")
+         txt_book_cnt = emb.read_text_library("CalText", book_text_lib)
+         logger.info(f"{txt_book_cnt} book loaded, generating embeddings...")
+         emb.gen_embeddings(model=embeddings_model, library_name="CalText", verbose=True)
+         logger.info("Embeddings processed")
     if do_bookdates is True:
         logger.error(f"Can't access the book library texts at {book_text_lib}")
