@@ -167,16 +167,20 @@ class MdTools:
     
     def minimal_frontmatter(self, note: dict[str, Any], filename: str) -> int:  # pyright: ignore[reportExplicitAny]
         changed = 0
-        if "metadata" not in note:
+        if "metadata" not in note or note["metadata"] is None:
             note["metadata"] = {}
             self.log.info(f"Note {filename} had no metadata, adding...")
             changed += 1
-        if "uuid" not in note["metadata"]:
-            note["metadata"]["uuid"] = str(uuid.uuid4())
-            self.log.info(
-                f"Note {filename} had no UUID, adding {note['metadata']['uuid']}"
-            )
-            changed += 1
+        try:
+            if "uuid" not in note["metadata"]:
+                note["metadata"]["uuid"] = str(uuid.uuid4())
+                self.log.info(
+                    f"Note {filename} had no UUID, adding {note['metadata']['uuid']}"
+                )
+                changed += 1
+        except Exception as e:
+            self.log.error(f"Something {e} went wrong with {filename}")
+            exit(-1)
         if "creation" not in note["metadata"]:
             dt = self.get_note_creation_date(filename)
             if dt is not None:
