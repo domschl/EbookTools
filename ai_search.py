@@ -82,6 +82,11 @@ class EmbeddingSearch:
                             'emb_ten_idx': -1,
                             'emb_ten_size': -1
                         }
+                        if descriptor_path in self.texts:
+                            if self.texts[descriptor_path]['text'] == doc_text:
+                                continue
+                            else:
+                                self.log.info(f"Document {descriptor_path} has been modified, recalculating")
                         self.texts[descriptor_path] = entry
                         count += 1
         return count
@@ -156,9 +161,10 @@ class EmbeddingSearch:
                 self.log.error("Migration failed, no emb_ten")
         else:
         # End migration
-            self.emb_ten = np.load(emb_file)['array']
-            with open(desc_file, 'r') as f:
-                self.texts  = json.load(f)
+            if os.path.exists(emb_file):
+                self.emb_ten = np.load(emb_file)['array']
+                with open(desc_file, 'r') as f:
+                    self.texts  = json.load(f)
         count = len(self.texts)
         self.log.info("Embeddings loaded: texts: {len(self.texts)}, emb_ten: {self.emb_ten.shape}")
         return count
@@ -170,20 +176,42 @@ class EmbeddingSearch:
         max_cnt = len(self.texts.keys())
         index = 0
         for desc in self.texts:
+            if self.texts[desc]['emb_ten_idx'] != -1 and self.texts[desc]['emb_ten_size'] != -1:
+                index = self.texts[desc]['emb_ten_idx'] + self.texts[desc]['emb_ten_size']
+                cnt += 1
+                self.log.info(f"Skipping {desc}, already processed, {cnt}/{max_cnt}, index={index}")
+                continue
             if desc.startswith(lib_desc):
                 text: str = self.texts[desc]['text']
+                if len(text) == 0:
+                    self.log.warning(f"Text for {desc} is empty, ignoring!")
+                    continue
                 text_chunks = [self.get_chunk(text, i) for i in range(len(text) // chunk_size)]
                 # embeddings: np.ndarray([], dtype=np.float32)
                 self.texts[desc]['emb_ten_idx'] = index
                 self.texts[desc]['emb_ten_size'] = len(text_chunks)
-                for text_chunk in text_chunks:
-                    response = ollama.embed(model=model, input=text_chunk)
-                    embedding: numpy.typing.NDArray[np.float32] = np.array(response["embeddings"][0], dtype=np.float32)
-                    # Check for ignored parts > [0] ! XXX
-                    if self.emb_ten is None:
-                        self.emb_ten = embedding
-                    else:
-                        self.emb_ten = np.append(self.emb_ten, np.array(embedding, dtype=np.float32), axis=0)
+                response = ollama.embed(model=model, input=text_chunks)
+                if len(response['embeddings']) != len(text_chunks):
+                    self.log.error(f"Assumption on ollama API failed, can't generate embeddings for {desc}, embs: {len(response['embeddings'])}, chunks: {len(text_chunks)}")
+                    continue
+                embedding = np.asarray(response["embeddings"], dtype=np.float32)
+                if len(embedding.shape)<2 or embedding.shape[1]!=768 or embedding.shape[0] != len(text_chunks):
+                    self.log.error(f"Assumption on numpy conversion failed, can't generate embeddings for {desc}, result: {embedding.shape}, chunks: {len(text_chunks)}")
+                    continue
+                if self.emb_ten is None:
+                    self.emb_ten = embedding
+                else:
+                    self.emb_ten = np.append(self.emb_ten, embedding, axis=0)  
+                # for text_chunk in text_chunks:
+                #     response = ollama.embed(model=model, input=text_chunk)
+                #     embedding = np.asarray(np.array(response["embeddings"][0], dtype=np.float32), dtype=np.float32)
+                #     # Check for ignored parts > [0] ! XXX
+                #     if len(response["embeddings"]) > 1:
+                #         self.log.error(f"Embedding vector has additional components: {len(response['embeddings'])}")
+                #     if self.emb_ten is None:
+                #         self.emb_ten = np.asarray([embedding], dtype=np.float32)
+                #     else:
+                #         self.emb_ten = np.append(self.emb_ten, np.array([embedding], dtype=np.float32), axis=0)
                 index += len(text_chunks)
                 cnt += 1
                 if verbose is True and self.emb_ten is not None:
