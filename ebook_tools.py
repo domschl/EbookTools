@@ -363,11 +363,36 @@ if __name__ == "__main__":
              logger.info("Loading embeddings...")
              emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
              logger.info("Embeddings loaded, searching...")
-        best_doc, best_index, best_chunk, cos_val = emb.search_embeddings(model=embeddings_model, search_text=search_spec)
+        best_doc, best_index, best_chunk, cos_val, yellow_liner = emb.search_embeddings(model=embeddings_model, search_text=search_spec, yellow_liner=True, context=20)
+        y_min: float | None = None
+        y_max: float | None = None
+        if yellow_liner is not None:
+            for y in yellow_liner:
+                 if y_min is None or y<y_min:
+                      y_min = y
+                 if y_max is None or y>y_max:
+                      y_max = y
+        if y_min == None:
+             y_min = 0
+        if y_max == None:
+             y_max = 1
         print("-----------------------------------------------")
         print(f"Document: {best_doc}[{best_index}], certainty: {cos_val * 100.0:2.1f} %")
         print("-----------------------------------------------")
-        print(best_chunk)
+        # print(best_chunk)
+        print(y_min, y_max)
+        if yellow_liner is not None:
+            from rich.console import Console
+            console = Console()
+            line = ""
+            for i, c in enumerate(best_chunk):
+                 yel = (yellow_liner[i]-y_min)/(y_max - y_min)
+                 if yel < 0.5:
+                      yel = 0.0
+                 col = hex(255 - int(yel*127.0))[2:]
+                 line += f"[black on #FFFF{col}]"+c+"[/]"
+            # print(line)
+            console.print(line)
         print("-----------------------------------------------")
         
     if do_bookdates is True:

@@ -140,9 +140,6 @@ class EmbeddingSearch:
                 self.texts[desc]['emb_ten_idx'] = index
                 self.texts[desc]['emb_ten_size'] = len(text_chunks)
                 response = ollama.embed(model=model, input=text_chunks)
-                if len(response['embeddings']) != len(text_chunks):
-                    self.log.error(f"Assumption on ollama API failed, can't generate embeddings for {desc}, embs: {len(response['embeddings'])}, chunks: {len(text_chunks)}")
-                    continue
                 embedding = np.asarray(response["embeddings"], dtype=np.float32)
                 if len(embedding.shape)<2 or embedding.shape[1]!=768 or embedding.shape[0] != len(text_chunks):
                     self.log.error(f"Assumption on numpy conversion failed, can't generate embeddings for {desc}, result: {embedding.shape}, chunks: {len(text_chunks)}")
@@ -169,7 +166,28 @@ class EmbeddingSearch:
             n = self.epsilon
         return float(m / n)
 
-    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, chunk_size: int=2048) -> tuple[str, int, str, float]:
+    def yellow_line_it(self, model: str, text: str, search_embedding: numpy.typing.ArrayLike, context:int=16) -> list[float]:
+        clr: list[str] = []
+        for i in range(len(text)):
+            i0 = i - context // 2
+            i1 = i + context // 2
+            if i0 < 0:
+                i1 = i1 - i0
+                i0 = 0
+            if i1 > len(text):
+                i0 = i0 - (i1 - len(text))
+                i1 = len(text)
+            clr.append(text[i0:i1])
+        response = ollama.embed(model=model, input=clr)
+        embs = np.asarray(response['embeddings'], dtype=np.float32)
+        yellow: list[float] = []
+        for i in range(embs.shape[0]):
+            emb = embs[i,:]
+            val: float = np.dot(search_embedding, emb) / np.linalg.norm(emb)
+            yellow.append(val)
+        return yellow
+    
+    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, chunk_size: int=2048, yellow_liner: bool=False, context:int=16) -> tuple[str, int, str, float, list[float] | None]:
         search_text = search_text[:chunk_size]
         response = ollama.embed(model=model, input=search_text)
         search_embedding = np.array(response["embeddings"][0], dtype=np.float32)
@@ -181,7 +199,7 @@ class EmbeddingSearch:
         best_chunk: str = ""
         cos_val: float = 0.0
         if self.emb_ten is None or self.texts == {}:
-            return best_doc, best_index, best_chunk, cos_val
+            return best_doc, best_index, best_chunk, cos_val, None
         t0 = time.time()
         idx_vec = np.asarray(np.matmul(self.emb_ten, search_embedding), dtype=np.float32)
         arg_max = np.argmax(idx_vec)
@@ -196,10 +214,13 @@ class EmbeddingSearch:
                 best_chunk = self.get_chunk(best_text, best_index).replace('\n',' ')
                 break
         dt = time.time() - t0
-        print(f"Search-time (dim: {self.emb_ten.shape}): {dt:.4f} sec")
-
-        print(best_chunk)
-        return best_doc, best_index, best_chunk, cos_val
+        if verbose is True:
+            self.log.info(f"Search-time (dim: {self.emb_ten.shape}): {dt:.4f} sec")
+        if yellow_liner is False:
+            yellow_liner_weights = None
+        else:
+            yellow_liner_weights = self.yellow_line_it(model, best_chunk, search_embedding, context=context)
+        return best_doc, best_index, best_chunk, cos_val, yellow_liner_weights
 
 
 model_list = [
