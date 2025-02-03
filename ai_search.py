@@ -194,6 +194,7 @@ class EmbeddingSearch:
                         last_save = time.time()
         self.save_text_embeddings()
 
+    # Unused, since everything is normalized
     def cos_sim(self, a: numpy.typing.ArrayLike, b: numpy.typing.ArrayLike) -> float:
         m: float = np.dot(a,b)
         n: float = float(np.linalg.norm(a) * np.linalg.norm(b))
@@ -216,28 +217,47 @@ class EmbeddingSearch:
         cos_val: float = 0.0
         if self.emb_ten is None or self.texts == {}:
             return best_doc, best_index, best_chunk, cos_val
-        # XXX can be one single op:
-        for desc in self.texts:
-            entry =  self.texts[desc]
-            embeddings = self.emb_ten[entry['emb_ten_idx']:entry['emb_ten_idx']+entry['emb_ten_size'], :]
-            for index in range(embeddings.shape[0]):
-                chunk = embeddings[index,:]
-                if search_embedding.shape != chunk.shape:
-                    self.log.error(f"{entry['filename']}: Invalid chunk.shape {chunk.shape} instead emb shape {search_embedding.shape}, can't compare at index {index}/{embeddings.shape[0]}!")
-                    continue
-                cs: float = np.dot(search_embedding, chunk)  # self.cos_sim(search_embedding, chunk)
-                if cs > cos_val:
-                    best_doc = desc
-                    best_index = index
-                    cos_val = cs
-                    best_text = entry['text']
-                    best_chunk = self.get_chunk(best_text, index).replace('\n',' ')
-                    if verbose is True:
-                        print("\n----\n")
-                        print(f"Best match {cs}: {best_doc}[{index}]: {best_chunk}")
-        if verbose is True:
-            print("------------------")
-            print(f"{search_text}: {best_chunk}")
+        t0 = time.time()
+        idx_vec = np.asarray(np.matmul(self.emb_ten, search_embedding), dtype=np.float32)
+        arg_max = np.argmax(idx_vec)
+        for desc in self.texts:  # XXX binary search
+            entry = self.texts[desc]
+            if entry['emb_ten_idx'] <= arg_max and entry['emb_ten_idx']+entry['emb_ten_size'] > arg_max:
+                self.log.info(desc)
+                best_doc = desc
+                best_index = int(arg_max) - entry['emb_ten_idx']
+                cos_val = idx_vec[arg_max]
+                best_text = entry['text']
+                best_chunk = self.get_chunk(best_text, best_index).replace('\n',' ')
+                break
+        dt = time.time() - t0
+        print(f"Search-time (dim: {self.emb_ten.shape}): {dt:.4f} sec")
+
+        print(best_chunk)
+#        self.log.info(f"idx_vec: {idx_vec.shape}, {arg_max}")
+#        for desc in self.texts:
+#            entry =  self.texts[desc]
+#            embeddings = self.emb_ten[entry['emb_ten_idx']:entry['emb_ten_idx']+entry['emb_ten_size'], :]
+#            for index in range(embeddings.shape[0]):
+#                chunk = embeddings[index,:]
+#                if search_embedding.shape != chunk.shape:
+#                    self.log.error(f"{entry['filename']}: Invalid chunk.shape {chunk.shape} instead emb shape {search_embedding.shape}, can't compare at index {index}/{embeddings.shape[0]}!")
+#                    continue
+#                cs: float = np.dot(search_embedding, chunk)  # self.cos_sim(search_embedding, chunk)
+#                if cs > cos_val:
+#                    best_doc = desc
+#                    best_index = index
+#                    best_idx = entry['emb_ten_idx']
+#                    cos_val = cs
+#                    best_text = entry['text']
+#                    best_chunk = self.get_chunk(best_text, index).replace('\n',' ')
+#                    if verbose is True:
+#                        print("\n----\n")
+#                        print(f"Best match {cs}: {best_doc}[{entry['emb_ten_idx']}+{index}]: {best_chunk}")
+#        if verbose is True:
+#            print("------------------")
+#            print(f"{search_text}: {best_chunk}, {best_index}")
+#        self.log.info(f"idx: {best_index}+{best_idx}")
         return best_doc, best_index, best_chunk, cos_val
 
 
