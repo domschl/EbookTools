@@ -8,13 +8,6 @@ import numpy.typing
 import numpy as np
 
 
-class EmbeddingEntryOld(TypedDict):
-    filename: str
-    text: str
-    embedding_generator: str
-    embedding: numpy.typing.NDArray[np.float32]
-
-    
 class EmbeddingEntry(TypedDict):
     filename: str
     text: str
@@ -116,55 +109,12 @@ class EmbeddingSearch:
         self.log.info(f"Info saved {emb_file} and {desc_file}")
 
     def load_text_embeddings(self) -> int:
-        # Start migration
-        emb_file_old = os.path.join(self.embeddings_path, 'library_embeddings.json')
         emb_file = os.path.join(self.embeddings_path, f"library_embeddings.npz")
         desc_file = os.path.join(self.embeddings_path, f"library_desc.json")
-        if os.path.exists(emb_file) is False and os.path.exists(emb_file_old) is True:
-            self.log.warning(f"Starting migration of old {emb_file_old}")
-            old_texts: dict[str, EmbeddingEntryOld] | None = None
-            with open(emb_file_old, 'r') as f:
-                old_texts  = json.load(f)
-            if old_texts is None:
-                self.log.error("No texts to migrate!")
-                return 0
-            index = 0
-            for txt_desc in old_texts:
-                #emb: numpy.typing.ArrayLike | None = None
-                # for key in old_texts[txt_desc]:
-                emb = np.asarray(old_texts[txt_desc]['embedding'], dtype=np.float32)
-                if emb.shape[1] != 768:  # XXX model dep.
-                    self.log.error(f"Embedding for {txt_desc} is invalid: {emb.shape}")
-                    continue
-                for sub_index in range(emb.shape[0]):  # Normalize once
-                    embi: np.typing.NDArray[np.float32] = emb[sub_index]
-                    embin = embi / np.linalg.norm(embi)
-                    emb[sub_index] = embin
-                if self.emb_ten is None:
-                    self.emb_ten = np.asarray(emb, dtype=np.float32)
-                    self.log.info(f"Created emb_ten as {self.emb_ten.shape}")
-                else:
-                    self.emb_ten = np.append(self.emb_ten, emb, axis=0)
-                    if index < 10000:
-                        self.log.info(f"index: {index}, emb_ten: {self.emb_ten.shape}, add {emb.shape}")
-                self.texts[txt_desc] = {
-                    'filename': old_texts[txt_desc]['filename'],
-                    'text': old_texts[txt_desc]['text'],
-                    'emb_ten_idx': index,
-                    'emb_ten_size': emb.shape[0]
-                    }
-                index += emb.shape[0]
-            self.save_text_embeddings()
-            if self.emb_ten is not None:
-                self.log.warning(f"Migration done: emb_ten: {self.emb_ten.shape}.")
-            else:
-                self.log.error("Migration failed, no emb_ten")
-        else:
-        # End migration
-            if os.path.exists(emb_file):
-                self.emb_ten = np.load(emb_file)['array']
-                with open(desc_file, 'r') as f:
-                    self.texts  = json.load(f)
+        if os.path.exists(emb_file):
+            self.emb_ten = np.load(emb_file)['array']
+            with open(desc_file, 'r') as f:
+                self.texts  = json.load(f)
         count = len(self.texts)
         self.log.info("Embeddings loaded: texts: {len(self.texts)}, emb_ten: {self.emb_ten.shape}")
         return count
@@ -187,7 +137,6 @@ class EmbeddingSearch:
                     self.log.warning(f"Text for {desc} is empty, ignoring!")
                     continue
                 text_chunks = [self.get_chunk(text, i) for i in range(len(text) // chunk_size)]
-                # embeddings: np.ndarray([], dtype=np.float32)
                 self.texts[desc]['emb_ten_idx'] = index
                 self.texts[desc]['emb_ten_size'] = len(text_chunks)
                 response = ollama.embed(model=model, input=text_chunks)
@@ -202,16 +151,6 @@ class EmbeddingSearch:
                     self.emb_ten = embedding
                 else:
                     self.emb_ten = np.append(self.emb_ten, embedding, axis=0)  
-                # for text_chunk in text_chunks:
-                #     response = ollama.embed(model=model, input=text_chunk)
-                #     embedding = np.asarray(np.array(response["embeddings"][0], dtype=np.float32), dtype=np.float32)
-                #     # Check for ignored parts > [0] ! XXX
-                #     if len(response["embeddings"]) > 1:
-                #         self.log.error(f"Embedding vector has additional components: {len(response['embeddings'])}")
-                #     if self.emb_ten is None:
-                #         self.emb_ten = np.asarray([embedding], dtype=np.float32)
-                #     else:
-                #         self.emb_ten = np.append(self.emb_ten, np.array([embedding], dtype=np.float32), axis=0)
                 index += len(text_chunks)
                 cnt += 1
                 if verbose is True and self.emb_ten is not None:
@@ -232,8 +171,6 @@ class EmbeddingSearch:
 
     def search_embeddings(self, model: str, search_text: str, verbose: bool=False, chunk_size: int=2048) -> tuple[str, int, str, float]:
         search_text = search_text[:chunk_size]
-        # while len(search_text) < chunk_size:
-        #     search_text = " " + search_text
         response = ollama.embed(model=model, input=search_text)
         search_embedding = np.array(response["embeddings"][0], dtype=np.float32)
         search_embedding = search_embedding / np.linalg.norm(search_embedding)
@@ -262,30 +199,6 @@ class EmbeddingSearch:
         print(f"Search-time (dim: {self.emb_ten.shape}): {dt:.4f} sec")
 
         print(best_chunk)
-#        self.log.info(f"idx_vec: {idx_vec.shape}, {arg_max}")
-#        for desc in self.texts:
-#            entry =  self.texts[desc]
-#            embeddings = self.emb_ten[entry['emb_ten_idx']:entry['emb_ten_idx']+entry['emb_ten_size'], :]
-#            for index in range(embeddings.shape[0]):
-#                chunk = embeddings[index,:]
-#                if search_embedding.shape != chunk.shape:
-#                    self.log.error(f"{entry['filename']}: Invalid chunk.shape {chunk.shape} instead emb shape {search_embedding.shape}, can't compare at index {index}/{embeddings.shape[0]}!")
-#                    continue
-#                cs: float = np.dot(search_embedding, chunk)  # self.cos_sim(search_embedding, chunk)
-#                if cs > cos_val:
-#                    best_doc = desc
-#                    best_index = index
-#                    best_idx = entry['emb_ten_idx']
-#                    cos_val = cs
-#                    best_text = entry['text']
-#                    best_chunk = self.get_chunk(best_text, index).replace('\n',' ')
-#                    if verbose is True:
-#                        print("\n----\n")
-#                        print(f"Best match {cs}: {best_doc}[{entry['emb_ten_idx']}+{index}]: {best_chunk}")
-#        if verbose is True:
-#            print("------------------")
-#            print(f"{search_text}: {best_chunk}, {best_index}")
-#        self.log.info(f"idx: {best_index}+{best_idx}")
         return best_doc, best_index, best_chunk, cos_val
 
 
