@@ -115,7 +115,7 @@ class EmbeddingSearch:
             return 0
         for txt_desc in self.texts:
             for key in self.texts[txt_desc]:
-                if key.startswith('emb_'):
+                if key == 'embedding':
                     self.texts[txt_desc][key] = np.asarray(self.texts[txt_desc][key], dtype=np.float32)
         return len(self.texts)
                 
@@ -167,6 +167,8 @@ class EmbeddingSearch:
         #     search_text = " " + search_text
         response = ollama.embed(model=model, input=search_text)
         search_embedding = np.array(response["embeddings"][0], dtype=np.float32)
+        if verbose is True:
+            self.log.info(f"Search-embedding: {search_embedding.shape}")
         best_doc: str = ""
         best_index: int = -1
         best_chunk: str = ""
@@ -181,6 +183,9 @@ class EmbeddingSearch:
                 continue
             for index in range(entry['embedding'].shape[0]):
                 chunk = entry['embedding'][index,:]
+                if search_embedding.shape != chunk.shape:
+                    self.log.error(f"{entry['filename']}: Invalid chunk.shape {chunk.shape} instead emb shape {search_embedding.shape}, can't compare at index {index}/{entry['embedding'].shape[0]}!")
+                    continue
                 cs = self.cos_sim(search_embedding, chunk)
                 if cs > cos_val:
                     best_doc = desc

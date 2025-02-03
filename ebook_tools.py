@@ -66,7 +66,7 @@ if __name__ == "__main__":
         "action",
         nargs="*",
         default="",
-        help="Action: export, notes, kindle, indra, meta, timeline, bookdates, embed",
+        help="Action: export, notes, kindle, indra, meta, timeline, bookdates, embed, search",
     )
     _ = parser.add_argument(
         "-t",
@@ -134,9 +134,11 @@ if __name__ == "__main__":
     do_timeline: bool = "timeline" in action
     do_bookdates: bool = "bookdates" in action
     do_embed: bool = "embed" in action
+    do_search: bool = "search" in action
     do_date_stuff: bool = (do_bookdates is True or do_timeline is True)
     use_sha256 = cast(bool, args.SHA256)
 
+    emb = None
     if cast(bool, args.execute) is False:
         dry_run = True
 
@@ -148,6 +150,7 @@ if __name__ == "__main__":
         and do_meta is False
         and do_bookdates is False
         and do_embed is False
+        and do_search is False
     ):
         logger.error("No action specified, exiting, use -h for help")
         exit(1)
@@ -344,11 +347,28 @@ if __name__ == "__main__":
                         # print(meta)
         logger.info(f"Processed metadata, ok={m_oks}, errors={m_errs}")
     if do_embed is True:
-         emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
-         logger.info(f"Loading text library: {book_text_lib}")
-         txt_book_cnt = emb.read_text_library("CalText", book_text_lib)
-         logger.info(f"{txt_book_cnt} book loaded, generating embeddings...")
-         emb.gen_embeddings(model=embeddings_model, library_name="CalText", verbose=True)
-         logger.info("Embeddings processed")
+        if emb is None:
+             emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
+        logger.info(f"Loading text library: {book_text_lib}")
+        txt_book_cnt = emb.read_text_library("CalText", book_text_lib)
+        logger.info(f"{txt_book_cnt} book loaded, generating embeddings...")
+        emb.gen_embeddings(model=embeddings_model, library_name="CalText", verbose=True)
+        logger.info("Embeddings processed")
+    if do_search is True:
+        search_spec = cast(str, args.keywords)
+        if search_spec == "":
+             logger.error("Please specify a search-string with `-k` parameter")
+             exit(1)
+        if emb is None:
+             logger.info("Loading embeddings...")
+             emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
+             logger.info("Embeddings loaded, searching...")
+        best_doc, best_index, best_chunk, cos_val = emb.search_embeddings(model=embeddings_model, search_text=search_spec)
+        print("-----------------------------------------------")
+        print(f"Document: {best_doc}[{best_index}], certainty: {cos_val * 100.0:2.1f} %")
+        print("-----------------------------------------------")
+        print(best_chunk)
+        print("-----------------------------------------------")
+        
     if do_bookdates is True:
         logger.error(f"Can't access the book library texts at {book_text_lib}")
