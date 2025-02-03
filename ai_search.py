@@ -116,7 +116,10 @@ class EmbeddingSearch:
             with open(desc_file, 'r') as f:
                 self.texts  = json.load(f)
         count = len(self.texts)
-        self.log.info("Embeddings loaded: texts: {len(self.texts)}, emb_ten: {self.emb_ten.shape}")
+        if self.emb_ten is not None:
+            self.log.info(f"Embeddings loaded: texts: {len(self.texts)}, emb_ten: {self.emb_ten.shape}")
+        else:
+            self.log.info(f"Embeddings loaded: texts: {len(self.texts)}")
         return count
                 
     def gen_embeddings(self, model: str, library_name: str, verbose: bool=False, chunk_size: int=2048, save_every_sec: float | None=60):
