@@ -117,11 +117,15 @@ class EmbeddingSearch:
             self.save_repos()
         for root, _dir, files in os.walk(l_path):
             for file in files:
-                if file[-4:] in extensions:
+                if file[-4:] in extensions or file[-3:] in extensions:
                     rel_path = root[len(l_path):]
                     full_path = os.path.join(root, file)
-                    with open(full_path, 'r') as f:
-                        doc_text = f.read()
+                    with open(full_path, 'r', encoding='utf-8') as f:
+                        try:
+                            doc_text = f.read()
+                        except Exception as e:
+                            self.log.error(f"Failed to read {full_path}, {e}")
+                            continue
                         descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}"
                         entry: EmbeddingEntry = {
                             'filename': file,
@@ -187,7 +191,7 @@ class EmbeddingSearch:
             if self.texts[desc]['emb_ten_idx'] != -1 and self.texts[desc]['emb_ten_size'] != -1:
                 index = self.texts[desc]['emb_ten_idx'] + self.texts[desc]['emb_ten_size']
                 cnt += 1
-                self.log.info(f"Skipping {desc}, already processed, {cnt}/{max_cnt}, index={index}")
+                # self.log.info(f"Skipping {desc}, already processed, {cnt}/{max_cnt}, index={index}")
                 continue
             if desc.startswith(lib_desc):
                 text: str = self.texts[desc]['text']

@@ -350,11 +350,13 @@ if __name__ == "__main__":
         if emb is None:
              emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
         logger.info(f"Loading text library: {book_text_lib}")
-        book_cnt = emb.read_text_library("CalText", book_text_lib, extensions=[".txt"])
+        book_cnt = 0
         book_cnt += emb.read_text_library(library_name="CalNotes", library_path=notes_path, extensions=[".md"])
+        book_cnt += emb.read_text_library("CalText", book_text_lib, extensions=[".txt"])
         logger.info(f"{book_cnt} text books+notes loaded, loading PDFs...")
         book_cnt += emb.read_pdf_library(library_name="CalPdf", library_path=meta_path)
         logger.info(f"{book_cnt} pdf+text books loaded, generating embeddings...")
+        emb.gen_embeddings(model=embeddings_model, library_name="CalNotes", verbose=True)
         emb.gen_embeddings(model=embeddings_model, library_name="CalText", verbose=True)
         logger.info("Text embeddings processed")
         emb.gen_embeddings(model=embeddings_model, library_name="CalPdf", verbose=True)
