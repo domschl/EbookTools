@@ -100,7 +100,9 @@ class EmbeddingSearch:
                         self.log.info(f"Read {rel_path}/{file}, {page_no - 1} pages.")
         return count
 
-    def read_text_library(self, library_name: str, library_path: str) -> int: 
+    def read_text_library(self, library_name: str, library_path: str, extensions:list[str] | None = None) -> int:
+        if extensions is None:
+            extensions = [".txt"]
         l_path = os.path.abspath(os.path.expanduser(library_path))
         if l_path[-1] != '/':
             l_path += '/'
@@ -115,7 +117,7 @@ class EmbeddingSearch:
             self.save_repos()
         for root, _dir, files in os.walk(l_path):
             for file in files:
-                if file.endswith('.txt'):
+                if file[-4:] in extensions:
                     rel_path = root[len(l_path):]
                     full_path = os.path.join(root, file)
                     with open(full_path, 'r') as f:
