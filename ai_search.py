@@ -117,7 +117,13 @@ class EmbeddingSearch:
             self.save_repos()
         for root, _dir, files in os.walk(l_path):
             for file in files:
-                if file[-4:] in extensions or file[-3:] in extensions:
+                ext = os.path.splitext(file)
+                if len(ext)==2:
+                    ext = ext[1]
+                else:
+                    self.log.error(f"Can't identify extension of {file}, ignoring")
+                    continue
+                if ext in extensions:
                     rel_path = root[len(l_path):]
                     full_path = os.path.join(root, file)
                     with open(full_path, 'r', encoding='utf-8') as f:
@@ -198,7 +204,7 @@ class EmbeddingSearch:
                 if len(text) == 0:
                     self.log.warning(f"Text for {desc} is empty, ignoring!")
                     continue
-                text_chunks = [self.get_chunk(text, i) for i in range(len(text) // chunk_size)]
+                text_chunks = [self.get_chunk(text, i) for i in range((len(text)-1) // chunk_size + 1) ]
                 self.texts[desc]['emb_ten_idx'] = index
                 self.texts[desc]['emb_ten_size'] = len(text_chunks)
                 response = ollama.embed(model=model, input=text_chunks)
