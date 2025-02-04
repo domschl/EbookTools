@@ -209,7 +209,7 @@ class EmbeddingSearch:
                 self.texts[desc]['emb_ten_size'] = len(text_chunks)
                 response = ollama.embed(model=model, input=text_chunks)
                 embedding = np.asarray(response["embeddings"], dtype=np.float32)
-                if len(embedding.shape)<2 or embedding.shape[1]!=768 or embedding.shape[0] != len(text_chunks):
+                if len(embedding.shape)<2 or embedding.shape[0] != len(text_chunks):
                     self.log.error(f"Assumption on numpy conversion failed, can't generate embeddings for {desc}, result: {embedding.shape}, chunks: {len(text_chunks)}")
                     continue
                 if self.emb_ten is None:

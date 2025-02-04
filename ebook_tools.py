@@ -388,6 +388,9 @@ if __name__ == "__main__":
         print("-----------------------------------------------")
         # print(best_chunk)
         print(y_min, y_max)
+        if y_min == y_max:
+             print("Search gave no meaningful result, search-embedding vector is trivial (language not supported?)")
+             exit(2)
         if yellow_liner is not None:
             from rich.console import Console
             console = Console()
