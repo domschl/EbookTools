@@ -350,10 +350,14 @@ if __name__ == "__main__":
         if emb is None:
              emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
         logger.info(f"Loading text library: {book_text_lib}")
-        txt_book_cnt = emb.read_text_library("CalText", book_text_lib)
-        logger.info(f"{txt_book_cnt} book loaded, generating embeddings...")
+        book_cnt = emb.read_text_library("CalText", book_text_lib)
+        logger.info(f"{book_cnt} text books loaded, loading PDFs...")
+        book_cnt += emb.read_pdf_library(library_name="CalPdf", library_path=meta_path)
+        logger.info(f"{book_cnt} pdf+text books loaded, generating embeddings...")
         emb.gen_embeddings(model=embeddings_model, library_name="CalText", verbose=True)
-        logger.info("Embeddings processed")
+        logger.info("Text embeddings processed")
+        emb.gen_embeddings(model=embeddings_model, library_name="CalPdf", verbose=True)
+        logger.info("PDF embeddings processed")
     if do_search is True:
         search_spec = cast(str, args.keywords)
         if search_spec == "":

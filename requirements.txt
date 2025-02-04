@@ -9,3 +9,4 @@ pycryptodome
 rich
 ollama
 numpy
+pymupdf
