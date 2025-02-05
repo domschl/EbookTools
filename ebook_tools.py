@@ -14,7 +14,7 @@ from md_tools import MdTools, MDTable
 from indra_tools import IndraTools
 from metadata import Metadata
 from time_lines import TimeLines
-from ai_search import EmbeddingSearch
+from ai_search import EmbeddingSearch, SearchResult
 
 
 class ConfigDict(TypedDict):
@@ -364,46 +364,53 @@ if __name__ == "__main__":
     if do_search is True:
         search_spec = cast(str, args.keywords)
         if search_spec == "":
-             logger.error("Please specify a search-string with `-k` parameter")
-             exit(1)
+            logger.error("Please specify a search-string with `-k` parameter")
+            exit(1)
         if emb is None:
-             logger.info("Loading embeddings...")
-             emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
-             logger.info("Embeddings loaded, searching...")
-        best_doc, best_index, best_chunk, cos_val, yellow_liner = emb.search_embeddings(model=embeddings_model, search_text=search_spec, yellow_liner=True, context=20)
-        y_min: float | None = None
-        y_max: float | None = None
-        if yellow_liner is not None:
-            for y in yellow_liner:
-                 if y_min is None or y<y_min:
-                      y_min = y
-                 if y_max is None or y>y_max:
-                      y_max = y
-        if y_min == None:
-             y_min = 0
-        if y_max == None:
-             y_max = 1
-        print("-----------------------------------------------")
-        print(f"Document: {best_doc}[{best_index}], certainty: {cos_val * 100.0:2.1f} %")
-        print("-----------------------------------------------")
-        # print(best_chunk)
-        print(y_min, y_max)
-        if y_min == y_max:
-             print("Search gave no meaningful result, search-embedding vector is trivial (language not supported?)")
-             exit(2)
-        if yellow_liner is not None:
-            from rich.console import Console
-            console = Console()
-            line = ""
-            for i, c in enumerate(best_chunk):
-                 yel = (yellow_liner[i]-y_min)/(y_max - y_min)
-                 if yel < 0.5:
-                      yel = 0.0
-                 col = hex(255 - int(yel*127.0))[2:]
-                 line += f"[black on #FFFF{col}]"+c+"[/]"
-            # print(line)
-            console.print(line)
-        print("-----------------------------------------------")
+            logger.info("Loading embeddings...")
+            emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
+            logger.info("Embeddings loaded, searching...")
+        max_results = 10
+        results: list[SearchResult] | None = emb.search_embeddings(model=embeddings_model, search_text=search_spec, yellow_liner=True, context=20, max_results=max_results)
+        if results is not None and len(results) > 0:
+            for i in range(max_results):
+                result = results[i]
+                y_min: float | None = None
+                y_max: float | None = None
+                if result['yellow_liner'] is not None:
+                    for y in result['yellow_liner']:
+                         if y_min is None or y<y_min:
+                              y_min = y
+                         if y_max is None or y>y_max:
+                              y_max = y
+                if y_min == None:
+                     y_min = 0
+                if y_max == None:
+                     y_max = 1
+                print("-----------------------------------------------")
+                print(f"Document: {result['desc']}{result['index']}], certainty: {result['cosine'] * 100.0:2.1f} %")
+                print("-----------------------------------------------")
+                # print(best_chunk)
+                # print(y_min, y_max)
+                if y_min == y_max:
+                     print("Search gave no meaningful result, search-embedding vector is trivial (language not supported?)")
+                     print(result['chunk'])
+                     continue
+                if result['yellow_liner'] is not None:
+                    from rich.console import Console
+                    console = Console()
+                    line = ""
+                    for i, c in enumerate(result['chunk']):
+                         yel = (result['yellow_liner'][i]-y_min)/(y_max - y_min)
+                         if yel < 0.5:
+                              yel = 0.0
+                         col = hex(255 - int(yel*127.0))[2:]
+                         line += f"[black on #FFFF{col}]"+c+"[/]"
+                    # print(line)
+                    console.print(line)
+                print("-----------------------------------------------")
+        else:
+            print("No search result available!")
         
     if do_bookdates is True:
         logger.error(f"Can't access the book library texts at {book_text_lib}")

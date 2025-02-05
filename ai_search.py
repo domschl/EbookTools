@@ -16,7 +16,14 @@ class EmbeddingEntry(TypedDict):
     emb_ten_idx: int
     emb_ten_size: int
 
-
+class SearchResult(TypedDict):
+    cosine: float
+    index: int
+    desc: str
+    text: str
+    chunk: str
+    yellow_liner: list[float] | None
+    
 class EmbeddingSearch:
     def __init__(self, embeddings_path: str, epsilon: float = 1e-6):
         self.log: logging.Logger = logging.getLogger("EmbSearch")
@@ -254,42 +261,58 @@ class EmbeddingSearch:
             val: float = np.dot(search_embedding, emb) / np.linalg.norm(emb)
             yellow.append(val)
         return yellow
-    
-    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, chunk_size: int=2048, yellow_liner: bool=False, context:int=16) -> tuple[str, int, str, float, list[float] | None]:
+
+    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, chunk_size: int=2048, yellow_liner: bool=False, context:int=16, max_results:int=10) -> list[SearchResult] | None:
         search_text = search_text[:chunk_size]
         response = ollama.embed(model=model, input=search_text)
         search_embedding = np.array(response["embeddings"][0], dtype=np.float32)
         search_embedding = search_embedding / np.linalg.norm(search_embedding)
         if verbose is True:
             self.log.info(f"Search-embedding: {search_embedding.shape}")
-        best_doc: str = ""
-        best_index: int = -1
-        best_chunk: str = ""
-        cos_val: float = 0.0
+        results: list[SearchResult] = []
+        
         if self.emb_ten is None or self.texts == {}:
-            return best_doc, best_index, best_chunk, cos_val, None
+            return None
         t0 = time.time()
-        idx_vec = np.asarray(np.matmul(self.emb_ten, search_embedding), dtype=np.float32)
-        arg_max = np.argmax(idx_vec)
-        for desc in self.texts:  # XXX binary search
+        idx_vec: np.typing.ArrayLike = np.asarray(np.matmul(self.emb_ten, search_embedding), dtype=np.float32)
+        # arg_max = np.argmax(idx_vec)
+        idx_list = cast(list[float], idx_vec.tolist())
+        idx_idx = list(enumerate(idx_list))
+        idx_srt = sorted(idx_idx, key=lambda x: x[1], reverse=True)
+
+        # if idx_srt[0][0] != arg_max:
+        #     print(f"That didn't work! {max_results}")
+        # else:
+        #     print("Wonderful!")
+        
+        for desc in self.texts:
             entry = self.texts[desc]
-            if entry['emb_ten_idx'] <= arg_max and entry['emb_ten_idx']+entry['emb_ten_size'] > arg_max:
-                self.log.info(desc)
-                best_doc = desc
-                best_index = int(arg_max) - entry['emb_ten_idx']
-                cos_val = idx_vec[arg_max]
-                best_text = entry['text']
-                best_chunk = self.get_chunk(best_text, best_index).replace('\n',' ')
-                break
+            for res_i in range(max_results):
+                # index_i = idx_srt[res_i][0]
+                arg_max_i = idx_srt[res_i][0]
+                if entry['emb_ten_idx'] <= arg_max_i and entry['emb_ten_idx']+entry['emb_ten_size'] > arg_max_i:
+                    self.log.info(f"{res_i}. {idx_vec[arg_max_i]}: {desc}")
+                    index = arg_max_i - entry['emb_ten_idx']
+                    chunk = self.get_chunk(entry['text'], index)
+                    if yellow_liner is True:
+                        yellow_liner_weights = self.yellow_line_it(model, chunk, search_embedding, context=context)
+                    else:
+                        yellow_liner_weights = None
+                    result: SearchResult = {
+                        'cosine': idx_vec[arg_max_i],
+                        'desc': desc,
+                        'index': index,
+                        'text': entry['text'],
+                        'chunk': chunk.replace('\n',' '),
+                        'yellow_liner': yellow_liner_weights
+                        }
+                    results.append(result)
+        results = sorted(results, key=lambda x: x['cosine'], reverse=True)
         dt = time.time() - t0
         if verbose is True:
             self.log.info(f"Search-time (dim: {self.emb_ten.shape}): {dt:.4f} sec")
-        if yellow_liner is False:
-            yellow_liner_weights = None
-        else:
-            yellow_liner_weights = self.yellow_line_it(model, best_chunk, search_embedding, context=context)
-        return best_doc, best_index, best_chunk, cos_val, yellow_liner_weights
-
+        return results
+    
 
 model_list = [
   "nomic-embed-text",
