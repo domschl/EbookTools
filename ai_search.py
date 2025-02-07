@@ -183,10 +183,26 @@ class EmbeddingSearch:
                         count += 1
         return count
 
-    @staticmethod
-    def get_chunk(text: str, index: int, chunk_size: int=2048):
-        chunk = text[index*chunk_size:(index+1)*chunk_size]
+    def get_chunk_cut(self, text: str, index: int, av_chunk_size: int=2048, av_chunk_overlay:int=0) -> str:
+        chunk = text[index*(av_chunk_size-av_chunk_overlay):(index+1)*(av_chunk_size-av_chunk_overlay)]
         return chunk
+
+    def get_chunk(self, text: str, index: int, av_chunk_size: int=2048, av_chunk_overlay:int=0, chunk_method:str = "cut") -> str:
+        if chunk_method == "cut":
+            return self.get_chunk_cut(text, index, av_chunk_size, av_chunk_overlay);
+        else:
+            self.log.error("Invalid chunk_method {chunk_method}")
+            return ""
+
+    def get_chunks(self, text:str, av_chunk_size:int=2048, av_chunk_overlay:int=0, chunk_method:str="cut") -> list[str]:
+        if chunk_method == "cut":
+            chunks = (len(text) - 1) // (av_chunk_size - av_chunk_overlay) + 1 
+            text_chunks = [self.get_chunk_cut(text, i) for i in range(chunks) ]
+            return text_chunks
+        else:
+            self.log.error(f"Unknown chunk_method: {chunk_method}")
+            return []
+            
 
     # This contains many annotations that only serve to shut up type-checker of basedpyright...
     class NumpyEncoder(json.JSONEncoder):
@@ -221,7 +237,7 @@ class EmbeddingSearch:
             self.log.info(f"Embeddings loaded: texts: {len(self.texts)}")
         return count
                 
-    def gen_embeddings(self, model: str, library_name: str, verbose: bool=False, chunk_size: int=2048, save_every_sec: float | None=360):
+    def gen_embeddings(self, model: str, library_name: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0, chunk_method:str = "cut",  save_every_sec: float | None=360):
         lib_desc = '{' + library_name + '}'
         last_save = time.time()
         cnt: int = 0
@@ -238,7 +254,8 @@ class EmbeddingSearch:
                 if len(text) == 0:
                     self.log.warning(f"Text for {desc} is empty, ignoring!")
                     continue
-                text_chunks = [self.get_chunk(text, i) for i in range((len(text)-1) // chunk_size + 1) ]
+                # text_chunks = [self.get_chunk(text, i) for i in range((len(text)-1) // chunk_size + 1) ]
+                text_chunks = self.get_chunks(text, av_chunk_size, av_chunk_overlay, chunk_method)
                 self.texts[desc]['emb_ten_idx'] = index
                 self.texts[desc]['emb_ten_size'] = len(text_chunks)
                 response = ollama.embed(model=model, input=text_chunks)
@@ -289,11 +306,12 @@ class EmbeddingSearch:
             yellow.append(val)
         return yellow
 
-    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, chunk_size: int=2048, yellow_liner: bool=False, context:int=16, max_results:int=10) -> list[SearchResult] | None:
-        search_text = search_text[:chunk_size]
+    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0, chunk_method:str="cut", yellow_liner: bool=False, context:int=16, max_results:int=10) -> list[SearchResult] | None:
         response = ollama.embed(model=model, input=search_text)
         search_embedding = np.array(response["embeddings"][0], dtype=np.float32)
         search_embedding = search_embedding / np.linalg.norm(search_embedding)
+        if len(search_text) > av_chunk_size:
+            self.log.warning(f"Search text is longer than av_chunk_size: {len(search_text)}")
         if verbose is True:
             self.log.info(f"Search-embedding: {search_embedding.shape}")
         results: list[SearchResult] = []
@@ -320,7 +338,7 @@ class EmbeddingSearch:
                 if entry['emb_ten_idx'] <= arg_max_i and entry['emb_ten_idx']+entry['emb_ten_size'] > arg_max_i:
                     self.log.info(f"{res_i}. {idx_vec[arg_max_i]}: {desc}")
                     index = arg_max_i - entry['emb_ten_idx']
-                    chunk = self.get_chunk(entry['text'], index)
+                    chunk = self.get_chunk(entry['text'], index, av_chunk_size, av_chunk_overlay, chunk_method)
                     if yellow_liner is True:
                         yellow_liner_weights = self.yellow_line_it(model, chunk, search_embedding, context=context)
                     else:
