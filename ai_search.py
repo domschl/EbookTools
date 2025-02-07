@@ -79,7 +79,7 @@ class EmbeddingSearch:
                     doc = pymupdf.open(full_path)
                     page_no:int = 0
                     entry: EmbeddingEntry
-                    if single_pages is True:
+                    if single_pages is True:  # Every page is it's own doc
                         for page in doc:
                             page_no += 1
                             descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}/page_{page_no}"
@@ -107,7 +107,7 @@ class EmbeddingSearch:
                             count += 1
                         if aborted is False:
                             self.log.info(f"Read {rel_path}/{file}, {page_no - 1} pages.")
-                    else:
+                    else:  # entire PDF is one text doc
                         pdf_text: str = ""
                         descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}"
                         for page in doc:
