@@ -388,7 +388,7 @@ if __name__ == "__main__":
                 if y_max == None:
                      y_max = 1
                 print("-----------------------------------------------")
-                print(f"Document: {result['desc']}{result['index']}], certainty: {result['cosine'] * 100.0:2.1f} %")
+                print(f"Document: {result['desc']}[{result['index']}], certainty: {result['cosine'] * 100.0:2.1f} %")
                 print("-----------------------------------------------")
                 # print(best_chunk)
                 # print(y_min, y_max)
