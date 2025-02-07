@@ -57,7 +57,7 @@ class EmbeddingSearch:
         with open(repo_file, 'w') as f:
             json.dump(self.repos, f)
 
-    def read_pdf_library(self, library_name: str, library_path: str) -> int:
+    def read_pdf_library(self, library_name: str, library_path: str, single_pages: bool = False) -> int:
         l_path = os.path.abspath(os.path.expanduser(library_path))
         if l_path[-1] != '/':
             l_path += '/'
@@ -78,33 +78,60 @@ class EmbeddingSearch:
                     full_path = os.path.join(root, file)
                     doc = pymupdf.open(full_path)
                     page_no:int = 0
-                    for page in doc:
-                        page_no += 1
-                        descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}/page_{page_no}"
-                        page_text = page.get_text()  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue, reportUnknownVariableType]
-                        if isinstance(page_text, str) is False:
-                            self.log.error(f"Can't read {rel_path} page {page_no}, ignoring page")
-                            continue
-                        page_text = cast(str, page_text)
-                        if len(page_text) == 0:
-                            continue
-                        entry: EmbeddingEntry = {
+                    entry: EmbeddingEntry
+                    if single_pages is True:
+                        for page in doc:
+                            page_no += 1
+                            descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}/page_{page_no}"
+                            page_text = page.get_text()  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue, reportUnknownVariableType]
+                            if isinstance(page_text, str) is False:
+                                self.log.error(f"Can't read {rel_path} page {page_no}, ignoring page")
+                                continue
+                            page_text = cast(str, page_text)
+                            if len(page_text) == 0:
+                                continue
+                            entry = {
+                                'filename': file,
+                                'text': page_text,
+                                'page_no': page_no,
+                                'emb_ten_idx': -1,
+                                'emb_ten_size': -1
+                            }
+                            if descriptor_path in self.texts:
+                                if self.texts[descriptor_path]['text'] == page_text:
+                                    aborted = True  # Don't test for more pages, if page checked is identical
+                                    break
+                                else:
+                                    self.log.info(f"Document page {descriptor_path} has been modified, recalculating")
+                            self.texts[descriptor_path] = entry
+                            count += 1
+                        if aborted is False:
+                            self.log.info(f"Read {rel_path}/{file}, {page_no - 1} pages.")
+                    else:
+                        pdf_text: str = ""
+                        descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}"
+                        for page in doc:
+                            page_no += 1
+                            page_text = page.get_text()  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue, reportUnknownVariableType]
+                            if isinstance(page_text, str) is False:
+                                self.log.error(f"Can't read {rel_path} page {page_no}, ignoring page")
+                                continue
+                            page_text = cast(str, page_text)
+                            if len(page_text) == 0:
+                                continue
+                            pdf_text += page_text
+                        entry = {
                             'filename': file,
-                            'text': page_text,
+                            'text': pdf_text,
                             'page_no': page_no,
                             'emb_ten_idx': -1,
                             'emb_ten_size': -1
                         }
                         if descriptor_path in self.texts:
-                            if self.texts[descriptor_path]['text'] == page_text:
-                                aborted = True  # Don't test for more pages, if page checked is identical
-                                break
-                            else:
-                                self.log.info(f"Document page {descriptor_path} has been modified, recalculating")
+                            if self.texts[descriptor_path]['text'] == pdf_text:
+                                continue
                         self.texts[descriptor_path] = entry
-                        count += 1
-                    if aborted is False:
-                        self.log.info(f"Read {rel_path}/{file}, {page_no - 1} pages.")
+                        count += 1                       
         return count
 
     def read_text_library(self, library_name: str, library_path: str, extensions:list[str] | None = None) -> int:
@@ -194,7 +221,7 @@ class EmbeddingSearch:
             self.log.info(f"Embeddings loaded: texts: {len(self.texts)}")
         return count
                 
-    def gen_embeddings(self, model: str, library_name: str, verbose: bool=False, chunk_size: int=2048, save_every_sec: float | None=60):
+    def gen_embeddings(self, model: str, library_name: str, verbose: bool=False, chunk_size: int=2048, save_every_sec: float | None=360):
         lib_desc = '{' + library_name + '}'
         last_save = time.time()
         cnt: int = 0
