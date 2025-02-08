@@ -371,7 +371,9 @@ if __name__ == "__main__":
             emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
             logger.info("Embeddings loaded, searching...")
         max_results = 10
-        results: list[SearchResult] | None = emb.search_embeddings(model=embeddings_model, search_text=search_spec, yellow_liner=True, context=20, max_results=max_results)
+        context = 48
+        context_steps = 5
+        results: list[SearchResult] | None = emb.search_embeddings(model=embeddings_model, search_text=search_spec, yellow_liner=True, context=context, context_steps=context_steps, max_results=max_results)
         if results is not None and len(results) > 0:
             for i in range(max_results):
                 result = results[i]
@@ -401,7 +403,7 @@ if __name__ == "__main__":
                     console = Console()
                     line = ""
                     for i, c in enumerate(result['chunk']):
-                         yel = (result['yellow_liner'][i]-y_min)/(y_max - y_min)
+                         yel = (result['yellow_liner'][i // context_steps]-y_min)/(y_max - y_min)
                          if yel < 0.5:
                               yel = 0.0
                          col = hex(255 - int(yel*127.0))[2:]

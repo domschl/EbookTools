@@ -285,9 +285,9 @@ class EmbeddingSearch:
             n = self.epsilon
         return float(m / n)
 
-    def yellow_line_it(self, model: str, text: str, search_embedding: numpy.typing.ArrayLike, context:int=16) -> list[float]:
+    def yellow_line_it(self, model: str, text: str, search_embedding: numpy.typing.ArrayLike, context:int=16, context_steps:int=1) -> list[float]:
         clr: list[str] = []
-        for i in range(len(text)):
+        for i in range(0, len(text), context_steps):
             i0 = i - context // 2
             i1 = i + context // 2
             if i0 < 0:
@@ -306,8 +306,9 @@ class EmbeddingSearch:
             yellow.append(val)
         return yellow
 
-    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0, chunk_method:str="cut", yellow_liner: bool=False, context:int=16, max_results:int=10) -> list[SearchResult] | None:
+    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0, chunk_method:str="cut", yellow_liner: bool=False, context:int=16, context_steps:int=1, max_results:int=10) -> list[SearchResult] | None:
         response = ollama.embed(model=model, input=search_text)
+        
         search_embedding = np.array(response["embeddings"][0], dtype=np.float32)
         search_embedding = search_embedding / np.linalg.norm(search_embedding)
         if len(search_text) > av_chunk_size:
@@ -340,7 +341,7 @@ class EmbeddingSearch:
                     index = arg_max_i - entry['emb_ten_idx']
                     chunk = self.get_chunk(entry['text'], index, av_chunk_size, av_chunk_overlay, chunk_method)
                     if yellow_liner is True:
-                        yellow_liner_weights = self.yellow_line_it(model, chunk, search_embedding, context=context)
+                        yellow_liner_weights = self.yellow_line_it(model, chunk, search_embedding, context=context, context_steps=context_steps)
                     else:
                         yellow_liner_weights = None
                     result: SearchResult = {
