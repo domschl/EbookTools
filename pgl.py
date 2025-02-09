@@ -12,8 +12,8 @@ class Pad(TypedDict):
     screen_pos_y: int
     width: int
     height: int
-    pad_cur_x: int
-    pad_cur_y: int
+    cur_x: int
+    cur_y: int
     buffer: list[str]
     buf_x: int
     buf_y: int
@@ -65,7 +65,7 @@ class Repl():
             print('\033[?25h', end="")
         else:
             pad = self.pads[padIndex]
-            print(f"\033[{pad['screen_pos_y']+pad['pad_cur_y']};{pad['screen_pos_x'] + pad['pad_cur_x']}H\033[?25h", end="")
+            print(f"\033[{pad['screen_pos_y']+pad['cur_y']};{pad['screen_pos_x'] + pad['cur_x']}H\033[?25h", end="")
         _ = sys.stdout.flush()
       
     def print_at(self, msg: str, y:int, x:int, flush:bool = False):
@@ -101,8 +101,8 @@ class Repl():
             'screen_pos_y': cur_y + offset_y,
             'width': width,
             'height': height,
-            'pad_cur_x': 0,
-            'pad_cur_y': 0,
+            'cur_x': 0,
+            'cur_y': 0,
             'schema': schema,
             'screen': [' ' * width] * height,
             'buffer': [],
@@ -134,12 +134,34 @@ class Repl():
         pad_id = self.create_pad(height, width, offset_y, offset_x, schema)
         self.show_cursor(pad_id)
         esc: bool = False
+        pad = self.pads[pad_id]
         while esc is False:
             c = self.get_char()
-            if c=="\n":
+            bytes = f"{bytearray(c.encode('utf-8'))}"
+            self.print_at(bytes, 0, 0, True)
+            if c[0] == chr(0x7f):
+                if pad['cur_x'] > 0:
+                    pad['cur_x'] -= 1
+                    self.pad_print_at(pad_id, " ", pad['cur_y'], pad['cur_x'], True)
+                    self.pad_print_at(pad_id, "", pad['cur_y'], pad['cur_x'], True)
+                else:
+                    if pad['cur_y'] > 0:
+                        pad['cur_y'] -= 1
+                        pad['cur_x'] = pad['width'] -1
+            elif c[0] == 'q':
                 esc = True
-            if c=="\x07":
-                pass
+            elif c[0] == chr(13):
+                pad['cur_x'] = 0
+                if pad['cur_y'] + 1 < pad['height']:
+                    pad['cur_y'] += 1
+            else:
+                self.pad_print_at(pad_id, c, pad['cur_y'], pad['cur_x'], True)
+                pad['cur_x'] += 1
+                if pad['cur_x'] == pad['width']:
+                    pad['cur_x'] = 0
+                    if pad['cur_y'] + 1 < pad['height']:
+                        pad['cur_y'] += 1
+                        
             
         self.display_screen(pad_id)
         return pad_id
