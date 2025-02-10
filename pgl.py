@@ -2,10 +2,14 @@ import logging
 import os
 import sys
 import termios
-import tty
+# import tty
 import time
 import re
+import threading
+import queue
+from dataclasses import dataclass
 from typing import TypedDict
+
 
 class Pad(TypedDict):
     screen_pos_x: int
@@ -20,6 +24,11 @@ class Pad(TypedDict):
     screen: list[str]
     schema: dict[str, int]
 
+@dataclass()
+class InputEvent:
+    cmd: str
+    msg: str
+
 
 class Repl():
     def __init__(self, lines: int=5):
@@ -30,32 +39,116 @@ class Repl():
             'bg': 243,
             }
         self.pads: list[Pad] = []
+        self.cur_x: int
+        self.cur_y: int
+        self.input_loop_active:bool = False
+        self.key_reader_active:bool = False
+        self.cur_x, self.cur_y = self.get_cursor_pos()
+
+        self.input_translation_mode: str = "simple"
+        self.input_queue:queue.Queue[InputEvent] = queue.Queue()
+        self.key_queue:queue.Queue[bytearray] = queue.Queue()
+        self.key_reader_active = True
+        self.key_thread: threading.Thread = threading.Thread(target=self.key_reader, daemon=True)
+        self.key_thread.start()
+        self.input_loop_active = True
+        self.input_thread: threading.Thread = threading.Thread(target=self.input_loop, daemon=True)
+        self.input_thread.start()
+
+    def get_ansi_char(self) -> str | None:
+        fd = sys.stdin.fileno()
+        old_attr = termios.tcgetattr(fd)
+        term = termios.tcgetattr(fd)
+        ch: str | None = None
+        try:
+            term[3] &= ~(termios.ICANON | termios.ECHO | termios.IGNBRK | termios.BRKINT)
+            termios.tcsetattr(fd, termios.TCSAFLUSH, term)
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_attr)
+        return ch
+        
+    def key_reader(self):
+        while self.key_reader_active is True:
+            inp = self.get_ansi_char()
+            if isinstance(inp, str):
+                bytes = bytearray(inp, encoding='UTF-8')
+                self.key_queue.put_nowait(bytes)
+
+    def input_loop(self):
+        esc_state: bool = False
+        esc_code = ""
+        tinp: InputEvent
+        while self.input_loop_active is True:
+            try:
+                inp = self.key_queue.get(timeout=0.01)
+            except queue.Empty:
+                if esc_state is True:
+                    tinp = InputEvent("esc", "")
+                    self.input_queue.put_nowait(tinp)
+                esc_state = False
+                esc_code = ""
+                continue
+            self.key_queue.task_done()
+            if len(inp) > 0:
+                if self.input_translation_mode == "simple":
+                    if esc_state is True:
+                        esc_code += chr(inp[0])
+                        if len(esc_code) == 2:
+                            if esc_code == "[A":
+                                tinp = InputEvent("up", "")
+                            elif esc_code == "[B":
+                                tinp = InputEvent("down", "")
+                            elif esc_code == "[C":
+                                tinp = InputEvent("right", "")
+                            elif esc_code == "[D":
+                                tinp = InputEvent("left", "")
+                            else:
+                                tinp = InputEvent("err", "ESC-"+esc_code)
+                            if tinp.cmd != "":
+                                self.input_queue.put_nowait(tinp)
+                            esc_code = ""
+                            esc_state = False
+                    else:
+                        if inp[0] == 0x7f:  # BSP
+                            tinp = InputEvent("bsp", "")
+                        elif inp[0] == 27:  # ESC
+                            esc_state = True
+                            continue
+                        elif inp[0] == 0x05:  # Ctrl-E
+                            tinp = InputEvent("exit", "")
+                        elif inp[0] == ord('\n'):
+                            tinp = InputEvent("nl", "")
+                        else:
+                            tinp = InputEvent("char", chr(inp[0]))
+                        # print(f"<Q:{tinp}>", end="")
+                        # _ = sys.stdout.flush()
+                        self.input_queue.put_nowait(tinp)
+                else:
+                    pass
+                # print(f"<QE: {inp}>")
+                # _ = sys.stdout.flush()
+                    
         
     def get_cursor_pos(self) -> tuple[int, int]:
-        old_stdin = termios.tcgetattr(sys.stdin)
-        attr = termios.tcgetattr(sys.stdin)
-        attr[3] = attr[3] & ~(termios.ECHO | termios.ICANON)
-        termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, attr)
-        try:
-            _ = ""
+        if self.input_loop_active is False:
             _ = sys.stdout.write("\x1b[6n")
             _ = sys.stdout.flush()
-            seq:str = ""
-            while not (seq := seq + sys.stdin.read(1)).endswith('R'):
-                time.sleep(0.01)
-            res = re.match(r".*\[(?P<y>\d*);(?P<x>\d*)R", seq)
-        finally:
-            termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, old_stdin)
-        if res is not None:
-            xs, ys =  (res.group("x"), res.group("y"))
-            try:
-                x: int = int(xs)
-                y: int = int(ys)
-            except Exception as _:
+            res = ""
+            while res.endswith('R') is False:
+                t = self.get_ansi_char()
+                if t is not None:
+                    res += t
+            mt = re.match(r".*\[(?P<y>\d*);(?P<x>\d*)R", res)
+            if mt is not None:
+                x = int(mt.group("x"))
+                y = int(mt.group("y"))
+                return (x, y)
+            else:
                 return (-1, -1)
-            return x, y
-        return (-1, -1)
-
+        else:
+            return (-1, -1)
+            
     def hide_cursor(self):
         print('\033[?25l', end="")
         _ = sys.stdout.flush()
@@ -73,32 +166,22 @@ class Repl():
         if flush is True:
             _ = sys.stdout.flush()
 
-    def get_char(self):
-        fd = sys.stdin.fileno()
-        old_attr = termios.tcgetattr(fd)
-        try:
-            _ = tty.setraw(fd)
-            ch = sys.stdin.read(1)
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_attr)
-        return ch
 
     def create_pad(self, height: int, width:int = 0, offset_y:int = 0, offset_x:int = 0, schema: dict[str, int] | None = None) -> int:
         cols, rows = os.get_terminal_size()
-        cur_x, cur_y = self.get_cursor_pos()
         if width + offset_x > cols:
             width = cols - offset_x
         if height + offset_y > rows:
             height = rows - offset_y
-        if cur_y + offset_y + height >= rows:
+        if self.cur_y + offset_y + height >= rows:
             for _ in range(height + offset_y - 2):
                 print()
-            cur_y -= height + cur_y + offset_y - rows
+            self.cur_y -= height + self.cur_y + offset_y - rows
         if schema is None:
             schema = self.default_schema
         pad: Pad = {
-            'screen_pos_x': cur_x + offset_x,
-            'screen_pos_y': cur_y + offset_y,
+            'screen_pos_x': self.cur_x + offset_x,
+            'screen_pos_y': self.cur_y + offset_y,
             'width': width,
             'height': height,
             'cur_x': 0,
@@ -130,39 +213,72 @@ class Repl():
             self.pad_print_at(pad_index, pad['screen'][i], i, 0)
         _ = sys.stdout.flush()
         
-    def create_editor(self, height: int, width:int = 0, offset_y:int =0, offset_x:int =0, schema: dict[str, int] | None=None) -> int:
+    def create_editor(self, height: int, width:int = 0, offset_y:int =0, offset_x:int =0, schema: dict[str, int] | None=None, debug:bool=False) -> int:
         pad_id = self.create_pad(height, width, offset_y, offset_x, schema)
         self.show_cursor(pad_id)
         esc: bool = False
         pad = self.pads[pad_id]
         while esc is False:
-            c = self.get_char()
-            bytes = f"{bytearray(c.encode('utf-8'))}"
-            self.print_at(bytes, 0, 0, True)
-            if c[0] == chr(0x7f):
-                if pad['cur_x'] > 0:
-                    pad['cur_x'] -= 1
-                    self.pad_print_at(pad_id, " ", pad['cur_y'], pad['cur_x'], True)
-                    self.pad_print_at(pad_id, "", pad['cur_y'], pad['cur_x'], True)
-                else:
-                    if pad['cur_y'] > 0:
-                        pad['cur_y'] -= 1
-                        pad['cur_x'] = pad['width'] -1
-            elif c[0] == 'q':
-                esc = True
-            elif c[0] == chr(13):
-                pad['cur_x'] = 0
-                if pad['cur_y'] + 1 < pad['height']:
-                    pad['cur_y'] += 1
+            try:
+                tinp:InputEvent | None = self.input_queue.get(timeout=0.02)
+            except queue.Empty:
+                tinp = None
+            # bytes = f"{bytearray(c.encode('utf-8'))}"
+            # self.print_at(bytes, 0, 0, True)
+            if debug is True and tinp is not None:
+                hex_msg = f"{bytearray(tinp.msg, encoding='utf-8')}"
+                print(f"[{tinp.cmd},{tinp.msg},{hex_msg}]")
+                self.input_queue.task_done()
             else:
-                self.pad_print_at(pad_id, c, pad['cur_y'], pad['cur_x'], True)
-                pad['cur_x'] += 1
-                if pad['cur_x'] == pad['width']:
-                    pad['cur_x'] = 0
-                    if pad['cur_y'] + 1 < pad['height']:
-                        pad['cur_y'] += 1
-                        
-            
+                if tinp is not None:
+                    if tinp.cmd == "bsp":
+                        if pad['cur_x'] > 0:
+                            pad['cur_x'] -= 1
+                            self.pad_print_at(pad_id, " ", pad['cur_y'], pad['cur_x'], True)
+                            self.pad_print_at(pad_id, "", pad['cur_y'], pad['cur_x'], True)
+                        else:
+                            if pad['cur_y'] > 0:
+                                pad['cur_y'] -= 1
+                                pad['cur_x'] = pad['width'] -1
+                    elif tinp.cmd == 'exit':
+                        esc = True
+                    elif tinp.cmd == "nl":
+                        pad['cur_x'] = 0
+                        if pad['cur_y'] + 1 < pad['height']:
+                            pad['cur_y'] += 1
+                        self.pad_print_at(pad_id, "", pad['cur_y'], pad['cur_x'], flush=True)
+                    elif tinp.cmd == "up":
+                        if pad['cur_y'] > 0:
+                            pad['cur_y'] -= 1
+                            self.pad_print_at(pad_id, "", pad['cur_y'], pad['cur_x'], flush=True)
+                    elif tinp.cmd == "down":
+                        if pad['cur_y'] < pad['height'] - 1:
+                            pad['cur_y'] += 1
+                            self.pad_print_at(pad_id, "", pad['cur_y'], pad['cur_x'], flush=True)
+                    elif tinp.cmd == "left":
+                        if pad['cur_x'] > 0:
+                            pad['cur_x'] -= 1
+                            self.pad_print_at(pad_id, "", pad['cur_y'], pad['cur_x'], flush=True)
+                    elif tinp.cmd == "right":
+                        if pad['cur_x'] < pad['width'] - 1:
+                            pad['cur_x'] += 1
+                            self.pad_print_at(pad_id, "", pad['cur_y'], pad['cur_x'], flush=True)
+                    elif tinp.cmd == "err":
+                        print()
+                        print(tinp.msg)
+                        exit(1)
+                    elif tinp.cmd == "char":
+                        self.pad_print_at(pad_id, tinp.msg, pad['cur_y'], pad['cur_x'], True)
+                        pad['cur_x'] += 1
+                        if pad['cur_x'] == pad['width']:
+                            pad['cur_x'] = 0
+                            if pad['cur_y'] + 1 < pad['height']:
+                                pad['cur_y'] += 1
+                    else:
+                        print(f"Bad state: cmd={tinp.cmd}, msg={tinp.msg}")
+                        exit(1)
+                    self.input_queue.task_done()
+                
         self.display_screen(pad_id)
         return pad_id
 
