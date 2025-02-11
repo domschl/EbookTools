@@ -424,10 +424,16 @@ class Repl():
                             pad['buffer'][pad['buf_y']+pad['cur_y']] = pad['buffer'][pad['buf_y']+pad['cur_y']][:pad['buf_x']+pad['cur_x']] + pad['buffer'][pad['buf_y']+pad['cur_y']][pad['buf_x']+pad['cur_x']+1:]
                         else:
                             if pad['cur_y'] + pad['buf_y'] > 0:
-                                _ = self.pad_move(pad_id, dy = -1, x = -1)
-                                if pad['cur_x'] + pad['buf_x'] > 0:
-                                    _ = self.pad_move(pad_id, dx = -1)
-                                    pad['buffer'][pad['buf_y']+pad['cur_y']] = pad['buffer'][pad['buf_y']+pad['cur_y']][:pad['buf_x']+pad['cur_x']] + pad['buffer'][pad['buf_y']+pad['cur_y']][pad['buf_x']+pad['cur_x']+1:]
+                                cur_idx = pad['cur_y']+pad['buf_y']
+                                cur_line = pad['buffer'][cur_idx]
+                                _ = self.pad_move(pad_id, dy = -1)
+                                _ = self.pad_move(pad_id, x = -1)
+                                cur_idx_new = pad['cur_y']+pad['buf_y']
+                                pad['buffer'][cur_idx_new] += cur_line
+                                del pad['buffer'][cur_idx]
+                                # if pad['cur_x'] + pad['buf_x'] > 0:
+                                #     _ = self.pad_move(pad_id, dx = -1)
+                                #     pad['buffer'][pad['buf_y']+pad['cur_y']] = pad['buffer'][pad['buf_y']+pad['cur_y']][:pad['buf_x']+pad['cur_x']] + pad['buffer'][pad['buf_y']+pad['cur_y']][pad['buf_x']+pad['cur_x']+1:]
                         self.display_screen(pad_id)
                     elif tinp.cmd == 'exit':
                         esc = True
