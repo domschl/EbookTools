@@ -2,20 +2,20 @@ import logging
 import os
 import sys
 import termios
-# import tty
-# import time
 import re
 import threading
 import queue
 from dataclasses import dataclass
-from typing import TypedDict
 
 
-class Pad(TypedDict):
+@dataclass()
+class Pad:
     screen_pos_x: int
     screen_pos_y: int
     width: int
     height: int
+    left_border: int
+    bottom_border: int
     cur_x: int
     cur_y: int
     buffer: list[str]
@@ -37,6 +37,8 @@ class Repl():
         self.default_schema: dict[str, int] = {
             'fg': 15,
             'bg': 243,
+            'lb': 247,
+            'bb': 55
             }
         self.pads: list[Pad] = []
         self.cur_x: int
@@ -149,7 +151,7 @@ class Repl():
                             esc_state = True
                             continue
                         elif inp == bytearray([0x05]):  # Ctrl-E
-                            tinp = InputEvent("exit", "")
+                            tinp = InputEvent("end", "")
                         elif inp == bytearray([0x0a]):
                             tinp = InputEvent("nl", "")
                         elif inp == bytearray([0x01]):  # ^A
@@ -162,6 +164,8 @@ class Repl():
                             tinp = InputEvent("down", "")
                         elif inp == bytearray([16]):  # ^P
                             tinp = InputEvent("up", "")
+                        elif inp == bytearray([24]):  # ^X
+                            tinp = InputEvent("exit", "")
                         else:
                             tinp = InputEvent("char", inp.decode('utf-8'))
                         # print(f"<Q:{tinp}>", end="")
@@ -201,7 +205,7 @@ class Repl():
             print('\033[?25h', end="")
         else:
             pad = self.pads[padIndex]
-            print(f"\033[{pad['screen_pos_y']+pad['cur_y']};{pad['screen_pos_x'] + pad['cur_x']}H\033[?25h", end="")
+            print(f"\033[{pad.screen_pos_y+pad.cur_y};{pad.screen_pos_x + pad.cur_x}H\033[?25h", end="")
         _ = sys.stdout.flush()
       
     def print_at(self, msg: str, y:int, x:int, flush:bool = False, scroll:bool=False):
@@ -224,7 +228,7 @@ class Repl():
             _ = sys.stdout.flush()
 
 
-    def create_pad(self, buffer:list[str], height: int, width:int = 0, offset_y:int = 0, offset_x:int = 0, schema: dict[str, int] | None = None) -> int:
+    def create_pad(self, buffer:list[str], height: int, width:int = 0, offset_y:int = 0, offset_x:int = 0, left_border:int=0, bottom_border:int=0, schema: dict[str, int] | None = None) -> int:
         cols, rows = os.get_terminal_size()
         if width + offset_x > cols:
             width = cols - offset_x
@@ -236,29 +240,34 @@ class Repl():
             self.cur_y -= height + self.cur_y + offset_y - rows
         if schema is None:
             schema = self.default_schema
-        pad: Pad = {
-            'screen_pos_x': self.cur_x + offset_x,
-            'screen_pos_y': self.cur_y + offset_y,
-            'width': width,
-            'height': height,
-            'cur_x': 0,
-            'cur_y': 0,
-            'schema': schema,
-            'screen': [' ' * width] * height,
-            'buffer': buffer,
-            'buf_x': 0,
-            'buf_y': 0
-            }
+        pad: Pad = Pad(
+            screen_pos_x = self.cur_x + offset_x + left_border,
+            screen_pos_y = self.cur_y + offset_y,
+            width = width-left_border,
+            height = height-bottom_border,
+            left_border = left_border,
+            bottom_border = bottom_border,
+            cur_x = 0,
+            cur_y = 0,
+            schema = schema,
+            screen = [' ' * width] * height,
+            buffer = buffer,
+            buf_x = 0,
+            buf_y = 0
+            )
         self.pads.append(pad)
         pad_index = len(self.pads)-1
         self.display_screen(pad_index)
         return pad_index
     
-    def pad_print_at(self, pad_index:int, msg: str, y:int, x:int, flush:bool = False, scroll:bool=False):
+    def pad_print_at(self, pad_index:int, msg: str, y:int, x:int, flush:bool = False, scroll:bool=False, border:bool=False):
         if pad_index >= len(self.pads):
             return
         pad = self.pads[pad_index]
-        self.print_at(msg, y+pad['screen_pos_y'], x+pad['screen_pos_x'], flush=flush, scroll=scroll)
+        if border is False:
+            self.print_at(msg, y+pad.screen_pos_y, x+pad.screen_pos_x, flush=flush, scroll=scroll)
+        else:
+            self.print_at(msg, y+pad.screen_pos_y, x+pad.screen_pos_x-pad.left_border, flush=flush, scroll=scroll)
 
     def display_screen(self, pad_index:int, set_cursor:bool = True, update_from_buffer:bool=True):
         if pad_index >= len(self.pads):
@@ -266,18 +275,30 @@ class Repl():
         pad = self.pads[pad_index]
 
         if update_from_buffer is True:
-            for i in range(pad['height']):
-                if i+pad['buf_y'] < len(pad['buffer']):
-                    pad['screen'][i] = buffer[i+pad['buf_y']][pad['buf_x']:pad['buf_x']+pad['width']]
-                    pad['screen'][i] += ' ' * (pad['width'] - len(pad['screen'][i]))
+            for i in range(pad.height):
+                if i+pad.buf_y < len(pad.buffer):
+                    pad.screen[i] = buffer[i+pad.buf_y][pad.buf_x:pad.buf_x+pad.width]
+                    pad.screen[i] += ' ' * (pad.width - len(pad.screen[i]))
                 else:
-                    pad['screen'][i] = ' ' * pad['width']
-        print(f"\033[48;5;{pad['schema']['bg']}m", end="")
-        print(f"\033[38;5;{pad['schema']['fg']}m", end="")
-        for i in range(pad['height']):
-            self.pad_print_at(pad_index, pad['screen'][i], i, 0)
+                    pad.screen[i] = ' ' * pad.width
+        print(f"\033[48;5;{pad.schema['bg']}m", end="")
+        print(f"\033[38;5;{pad.schema['fg']}m", end="")
+        for i in range(pad.height):
+            self.pad_print_at(pad_index, pad.screen[i], i, 0)
+        if pad.left_border > 0:
+            print(f"\033[48;5;{pad.schema['lb']}m", end="")
+            for i in range(pad.height):
+                self.pad_print_at(pad_index, f"  {i+pad.buf_y:3d} ", i, 0, border=True)
+        if pad.bottom_border > 0:
+            print(f"\033[48;5;{pad.schema['bb']}m", end="")
+            for i in range(pad.height, pad.height+pad.bottom_border):
+                status_msg = ' ' * pad.left_border + f"Doms editor ({pad.cur_y+pad.buf_y},{pad.cur_x+pad.buf_x})"
+                gl = pad.left_border + pad.width
+                status_msg = status_msg[:gl]
+                status_msg += ' ' * (gl - len(status_msg))
+                self.pad_print_at(pad_index, status_msg, i, 0, border=True)
         if set_cursor is True:
-            self.pad_print_at(pad_index, "", pad['cur_y'], pad['cur_x'])
+            self.pad_print_at(pad_index, "", pad.cur_y, pad.cur_x)
         _ = sys.stdout.flush()
 
     def pad_move(self, pad_id:int, dx:int | None = None, dy:int | None = None, x:int | None = None, y: int | None = None) -> bool:
@@ -288,129 +309,132 @@ class Repl():
         if x is None:
             if dx is not None:
                 if dx < 0:
-                    if pad['cur_x'] + dx >=0:
-                        pad['cur_x'] += dx
+                    if pad.cur_x + dx >=0:
+                        pad.cur_x += dx
                         changed=True
-                    elif pad['buf_x'] + pad['cur_x'] + dx >= 0:
-                        pad['buf_x'] += dx
-                        if pad['buf_x'] < 0:
-                            pad['buf_x'] = 0
-                            pad['cur_x'] = 0
+                    elif pad.buf_x + pad.cur_x + dx >= 0:
+                        pad.buf_x += dx
+                        if pad.buf_x < 0:
+                            pad.buf_x = 0
+                            pad.cur_x = 0
                         changed = True
                     else:
-                        pad['buf_x'] = 0
-                        pad['cur_x'] = 0
+                        pad.buf_x = 0
+                        pad.cur_x = 0
                         changed = True
                 elif dx > 0:
-                    len_x = len(pad['buffer'][pad['buf_y']+pad['cur_y']])
-                    if pad['buf_x'] + pad['cur_x'] < len_x:
-                        if pad['cur_x'] < pad['width']:
-                            pad['cur_x'] += dx
+                    len_x = len(pad.buffer[pad.buf_y+pad.cur_y])
+                    if pad.buf_x + pad.cur_x < len_x:
+                        if pad.cur_x < pad.width:
+                            pad.cur_x += dx
                         else:
-                            pad['buf_x'] += dx
+                            pad.buf_x += dx
                         changed = True
                     else:
                         pass  # EOL, don't expand
         else:
             if x == -1:
-                len_x = len(pad['buffer'][pad['buf_y']+pad['cur_y']])
-                len_w = len_x - pad['width']
+                len_x = len(pad.buffer[pad.buf_y+pad.cur_y])
+                len_w = len_x - pad.width
                 if len_w < 0:
                     len_w = 0
-                pad['buf_x'] = len_w
-                pad['cur_x'] = len_x - pad['buf_x']
+                pad.buf_x = len_w
+                pad.cur_x = len_x - pad.buf_x
                 changed = True
             elif x == 0:
-                pad['buf_x'] = 0
-                pad['cur_x'] = 0
+                pad.buf_x = 0
+                pad.cur_x = 0
                 changed = True
             else:
-                len_x = len(pad['buffer'][pad['buf_y']+pad['cur_y']])
+                len_x = len(pad.buffer[pad.buf_y+pad.cur_y])
                 if x > len_x:
                     x= len_x
-                if x <= pad['width']:
-                    pad['buf_x'] = 0
-                    pad['cur_x'] = x
+                if x <= pad.width:
+                    pad.buf_x = 0
+                    pad.cur_x = x
                 else:
-                    pad['buf_x'] = x
-                    pad['cur_x'] = 0
+                    pad.buf_x = x
+                    pad.cur_x = 0
                 changed = True
         if y is None:
             if dy is not None:
                 if dy < 0:
-                    if pad['cur_y'] + dy >=0:
-                        pad['cur_y'] += dy
+                    if pad.cur_y + dy >=0:
+                        pad.cur_y += dy
                         changed=True
-                    elif pad['buf_y'] + pad['cur_y'] + dy >= 0:
-                        pad['buf_y'] += dy
-                        if pad['buf_y'] < 0:
-                            pad['buf_y'] = 0
-                            pad['cur_y'] = 0
+                    elif pad.buf_y + pad.cur_y + dy >= 0:
+                        pad.buf_y += dy
+                        if pad.buf_y < 0:
+                            pad.buf_y = 0
+                            pad.cur_y = 0
                         changed = True
                     else:
-                        pad['buf_y'] = 0
-                        pad['cur_y'] = 0
+                        pad.buf_y = 0
+                        pad.cur_y = 0
                         changed = True
                 elif dy > 0:
-                    if pad['buf_y'] + pad['cur_y'] < len(pad['buffer']) - dy:
-                        if pad['cur_y'] < pad['height'] - 1:
-                            pad['cur_y'] += dy
+                    if pad.buf_y + pad.cur_y < len(pad.buffer) - dy:
+                        if pad.cur_y < pad.height - 1:
+                            pad.cur_y += dy
                         else:
-                            pad['buf_y'] += dy
+                            pad.buf_y += dy
                         changed = True
         else:
             if y == -1:
-                len_y = len(pad['buffer'])
-                len_h = len_y - pad['height']
+                len_y = len(pad.buffer)
+                len_h = len_y - pad.height
                 if len_h < 0:
                     len_h = 0
-                pad['buf_y'] = len_h
-                pad['cur_y'] = len_y - pad['buf_y']
+                pad.buf_y = len_h
+                pad.cur_y = len_y - pad.buf_y
                 changed = True
             elif y == 0:
-                pad['buf_y'] = 0
-                pad['cur_y'] = 0
+                pad.buf_y = 0
+                pad.cur_y = 0
                 changed = True
             else:
-                len_y = len(pad['buffer'])
+                len_y = len(pad.buffer)
                 if y > len_y:
                     y= len_y
-                if y <= pad['height']:
-                    pad['buf_y'] = 0
-                    pad['cur_y'] = y
+                if y <= pad.height:
+                    pad.buf_y = 0
+                    pad.cur_y = y
                 else:
-                    pad['buf_y'] = y
-                    pad['cur_y'] = 0
+                    pad.buf_y = y
+                    pad.cur_y = 0
                 changed = True
-        len_x = len(pad['buffer'][pad['buf_y']+pad['cur_y']])
-        delta = len_x - (pad['buf_x'] + pad['cur_x'])
+        len_x = len(pad.buffer[pad.buf_y+pad.cur_y])
+        delta = len_x - (pad.buf_x + pad.cur_x)
         if delta < 0:
-            if pad['cur_x'] + delta >= 0:
-                pad['cur_x'] += delta
+            if pad.cur_x + delta >= 0:
+                pad.cur_x += delta
             else:
-                pad['buf_x'] += delta # - pad['cur_x']
-                # pad['cur_x'] = 0
-                if pad['buf_x'] < 0:
-                    pad['buf_x'] = 0
-                    pad['cur_x'] = 0
+                pad.buf_x += delta
+                if pad.buf_x < 0:
+                    pad.buf_x = 0
+                    pad.cur_x = 0
             changed = True
-        if pad['cur_x'] == pad['width']:
-            pad['buf_x'] += 1
-            pad['cur_x'] -= 1
+        if pad.cur_x == pad.width:
+            pad.buf_x += 1
+            pad.cur_x -= 1
             changed = True
-        while pad['cur_y'] >= pad['height']:
-            pad['buf_y'] += 1
-            if pad['cur_y'] > 0:
-                pad['cur_y'] -= 1
-        if pad['cur_y'] >= pad['height']:
-            print(f"Pad_y: {pad['cur_y']} error")
+        while pad.cur_y >= pad.height:
+            pad.buf_y += 1
+            if pad.cur_y > 0:
+                pad.cur_y -= 1
+        if pad.cur_y >= pad.height:
+            print(f"Pad_y: {pad.cur_y} error")
             exit(1)
         return changed
 
-
-        
-    def create_editor(self, buffer: list[str], height: int, width:int = 0, offset_y:int =0, offset_x:int =0, schema: dict[str, int] | None=None, debug:bool=False) -> int:
-        pad_id = self.create_pad(buffer, height, width, offset_y, offset_x, schema)
+    def create_editor(self, buffer: list[str], height: int, width:int = 0, offset_y:int =0, offset_x:int =0, schema: dict[str, int] | None=None, line_no:bool=False, status_line:bool=False, debug:bool=False) -> int:
+        left_border:int = 0
+        bottom_border:int = 0
+        if line_no is True:
+            left_border = 6
+        if status_line is True:
+            bottom_border = 1
+        pad_id = self.create_pad(buffer, height, width, offset_y, offset_x, left_border, bottom_border, schema)
         self.show_cursor(pad_id)
         esc: bool = False
         pad = self.pads[pad_id]
@@ -419,8 +443,6 @@ class Repl():
                 tinp:InputEvent | None = self.input_queue.get(timeout=0.02)
             except queue.Empty:
                 tinp = None
-            # bytes = f"{bytearray(c.encode('utf-8'))}"
-            # self.print_at(bytes, 0, 0, True)
             if debug is True and tinp is not None:
                 hex_msg = f"{bytearray(tinp.msg, encoding='utf-8')}"
                 print(f"[{tinp.cmd},{tinp.msg},{hex_msg}]")
@@ -428,40 +450,37 @@ class Repl():
             else:
                 if tinp is not None:
                     if tinp.cmd == "bsp":
-                        if pad['cur_x'] + pad['buf_x'] > 0:
+                        if pad.cur_x + pad.buf_x > 0:
                             _ = self.pad_move(pad_id, dx = -1)
-                            pad['buffer'][pad['buf_y']+pad['cur_y']] = pad['buffer'][pad['buf_y']+pad['cur_y']][:pad['buf_x']+pad['cur_x']] + pad['buffer'][pad['buf_y']+pad['cur_y']][pad['buf_x']+pad['cur_x']+1:]
+                            pad.buffer[pad.buf_y+pad.cur_y] = pad.buffer[pad.buf_y+pad.cur_y][:pad.buf_x+pad.cur_x] + pad.buffer[pad.buf_y+pad.cur_y][pad.buf_x+pad.cur_x+1:]
                         else:
-                            if pad['cur_y'] + pad['buf_y'] > 0:
-                                cur_idx = pad['cur_y']+pad['buf_y']
-                                cur_line = pad['buffer'][cur_idx]
+                            if pad.cur_y + pad.buf_y > 0:
+                                cur_idx = pad.cur_y+pad.buf_y
+                                cur_line = pad.buffer[cur_idx]
                                 _ = self.pad_move(pad_id, dy = -1)
                                 _ = self.pad_move(pad_id, x = -1)
-                                cur_idx_new = pad['cur_y']+pad['buf_y']
-                                pad['buffer'][cur_idx_new] += cur_line
-                                del pad['buffer'][cur_idx]
-                                # if pad['cur_x'] + pad['buf_x'] > 0:
-                                #     _ = self.pad_move(pad_id, dx = -1)
-                                #     pad['buffer'][pad['buf_y']+pad['cur_y']] = pad['buffer'][pad['buf_y']+pad['cur_y']][:pad['buf_x']+pad['cur_x']] + pad['buffer'][pad['buf_y']+pad['cur_y']][pad['buf_x']+pad['cur_x']+1:]
+                                cur_idx_new = pad.cur_y+pad.buf_y
+                                pad.buffer[cur_idx_new] += cur_line
+                                del pad.buffer[cur_idx]
                         self.display_screen(pad_id)
                     elif tinp.cmd == 'exit':
                         esc = True
                     elif tinp.cmd == "nl":
-                        cur_ind = pad['cur_y']+pad['buf_y']
-                        cur_pos = pad['cur_x'] + pad['buf_x']
-                        if cur_ind < len(pad['buffer']):
-                            cur_line: str = pad['buffer'][cur_ind]
+                        cur_ind = pad.cur_y+pad.buf_y
+                        cur_pos = pad.cur_x + pad.buf_x
+                        if cur_ind < len(pad.buffer):
+                            cur_line: str = pad.buffer[cur_ind]
                         else:
                             print("error cur_line invl")
                             cur_line = ""
                             exit(1)
                         left = cur_line[:cur_pos]
                         right = cur_line[cur_pos:]
-                        pad['buffer'][cur_ind]=left
-                        if cur_ind == len(pad['buffer']) -1:
-                            pad['buffer'].append(right)
+                        pad.buffer[cur_ind]=left
+                        if cur_ind == len(pad.buffer) -1:
+                            pad.buffer.append(right)
                         else:
-                            pad['buffer'].insert(cur_ind+1, right)
+                            pad.buffer.insert(cur_ind+1, right)
                         _ = self.pad_move(pad_id, dy=1, x=0)
                         self.display_screen(pad_id)
                     elif tinp.cmd == "up":
@@ -483,17 +502,17 @@ class Repl():
                         _ = self.pad_move(pad_id, x= -1)
                         self.display_screen(pad_id)
                     elif tinp.cmd == "PgUp":
-                        _ = self.pad_move(pad_id, dy = -pad['height'])
+                        _ = self.pad_move(pad_id, dy = -pad.height)
                         self.display_screen(pad_id)
                     elif tinp.cmd == "PgDown":
-                        _ = self.pad_move(pad_id, dy = pad['height'])
+                        _ = self.pad_move(pad_id, dy = pad.height)
                         self.display_screen(pad_id)
                     elif tinp.cmd == "Start":
                         _ = self.pad_move(pad_id, x=0, y=0)
                         self.display_screen(pad_id)
                     elif tinp.cmd == "End":
-                        llen = len(pad['buffer']) - 1
-                        y = llen + pad['height']
+                        llen = len(pad.buffer) - 1
+                        y = llen + pad.height
                         if y > llen:
                             y = llen
                         _ = self.pad_move(pad_id, y=y)
@@ -504,12 +523,12 @@ class Repl():
                         print(tinp.msg)
                         exit(1)
                     elif tinp.cmd == "char":
-                        cur_ind = pad['cur_y']+pad['buf_y']
-                        cur_line = pad['buffer'][cur_ind]
+                        cur_ind = pad.cur_y+pad.buf_y
+                        cur_line = pad.buffer[cur_ind]
                         if ord(tinp.msg[0]) >= 32:
-                            left = cur_line[:pad['buf_x']+pad['cur_x']]
-                            right = cur_line[pad['buf_x']+pad['cur_x']:]
-                            pad['buffer'][cur_ind] = left + tinp.msg + right
+                            left = cur_line[:pad.buf_x+pad.cur_x]
+                            right = cur_line[pad.buf_x+pad.cur_x:]
+                            pad.buffer[cur_ind] = left + tinp.msg + right
                             _ = self.pad_move(pad_id, dx = 1)
                         self.display_screen(pad_id)
                     else:
@@ -524,15 +543,6 @@ class Repl():
 if __name__ == "__main__":
     repl = Repl()
     buffer: list[str] = ["That", "is", "the", "initial", "long", "text"]
-    id = repl.create_editor(buffer, 4,40, 1, 3)
+    id = repl.create_editor(buffer, 40,100, 1, 3, None, True, True)
     print()
     print(buffer)
-    # repl.print_at("Done\n",6, 0)
-    # repl.fill_pad('x')
-   #  time.sleep(1)
-    # repl.fill_pad('y')
-    # time.sleep(1)
-    # repl.fill_pad('z')
-    # time.sleep(1)
-    # repl.show_cursor()
-    # c:str = repl.get_char()
