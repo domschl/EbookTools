@@ -127,7 +127,16 @@ class Repl():
                                 esc_code = ""
                                 esc_state = False
                         if term_char != '' and esc_code.endswith(term_char):
-                            tinp = InputEvent("EscSeq", esc_code)
+                            if esc_code == "[5~":  # PgUp
+                                tinp = InputEvent("PgUp", "")
+                            elif esc_code == "[6~":
+                                tinp = InputEvent("PgDown", "")
+                            elif esc_code == "[5;2~":
+                                tinp = InputEvent("Start", "")
+                            elif esc_code == "[6;2~":
+                                tinp = InputEvent("End", "")
+                            else:
+                                tinp = InputEvent("EscSeq", esc_code)
                             self.input_queue.put_nowait(tinp)
                             tinp = InputEvent("", "")
                             esc_code = ""
@@ -296,9 +305,9 @@ class Repl():
                     len_x = len(pad['buffer'][pad['buf_y']+pad['cur_y']])
                     if pad['buf_x'] + pad['cur_x'] < len_x:
                         if pad['cur_x'] < pad['width']:
-                            pad['cur_x'] += 1
+                            pad['cur_x'] += dx
                         else:
-                            pad['buf_x'] += 1
+                            pad['buf_x'] += dx
                         changed = True
                     else:
                         pass  # EOL, don't expand
@@ -343,11 +352,11 @@ class Repl():
                         pad['cur_y'] = 0
                         changed = True
                 elif dy > 0:
-                    if pad['buf_y'] + pad['cur_y'] < len(pad['buffer']) - 1:
+                    if pad['buf_y'] + pad['cur_y'] < len(pad['buffer']) - dy:
                         if pad['cur_y'] < pad['height'] - 1:
-                            pad['cur_y'] += 1
+                            pad['cur_y'] += dy
                         else:
-                            pad['buf_y'] += 1
+                            pad['buf_y'] += dy
                         changed = True
         else:
             if y == -1:
@@ -373,7 +382,6 @@ class Repl():
                     pad['buf_y'] = y
                     pad['cur_y'] = 0
                 changed = True
-
         len_x = len(pad['buffer'][pad['buf_y']+pad['cur_y']])
         delta = len_x - (pad['buf_x'] + pad['cur_x'])
         if delta < 0:
@@ -390,9 +398,10 @@ class Repl():
             pad['buf_x'] += 1
             pad['cur_x'] -= 1
             changed = True
-        if pad['cur_y'] == pad['height']:
+        while pad['cur_y'] >= pad['height']:
             pad['buf_y'] += 1
-            pad['cur_y'] -= 1
+            if pad['cur_y'] > 0:
+                pad['cur_y'] -= 1
         if pad['cur_y'] >= pad['height']:
             print(f"Pad_y: {pad['cur_y']} error")
             exit(1)
@@ -471,6 +480,23 @@ class Repl():
                         _ = self.pad_move(pad_id, x=0)
                         self.display_screen(pad_id)
                     elif tinp.cmd == "end":
+                        _ = self.pad_move(pad_id, x= -1)
+                        self.display_screen(pad_id)
+                    elif tinp.cmd == "PgUp":
+                        _ = self.pad_move(pad_id, dy = -pad['height'])
+                        self.display_screen(pad_id)
+                    elif tinp.cmd == "PgDown":
+                        _ = self.pad_move(pad_id, dy = pad['height'])
+                        self.display_screen(pad_id)
+                    elif tinp.cmd == "Start":
+                        _ = self.pad_move(pad_id, x=0, y=0)
+                        self.display_screen(pad_id)
+                    elif tinp.cmd == "End":
+                        llen = len(pad['buffer']) - 1
+                        y = llen + pad['height']
+                        if y > llen:
+                            y = llen
+                        _ = self.pad_move(pad_id, y=y)
                         _ = self.pad_move(pad_id, x= -1)
                         self.display_screen(pad_id)
                     elif tinp.cmd == "err":
