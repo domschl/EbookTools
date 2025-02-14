@@ -7,6 +7,10 @@ import threading
 import queue
 from dataclasses import dataclass
 
+import sdl2
+import sdl2.ext
+import sdl2.sdlttf
+
 
 @dataclass()
 class Pad:
@@ -31,9 +35,14 @@ class InputEvent:
 
 
 class Repl():
-    def __init__(self, lines: int=5):
+    def __init__(self, engine:str="TEXT"):
         # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
         self.log: logging.Logger = logging.getLogger("Repl")
+        valid_engines = ["TEXT", "SDL2"]
+        if engine not in valid_engines:
+            self.log.error(f"Unknown engine {engine}, use one of {valid_engines}")
+            exit(1)
+        self.engine:str = engine
         self.default_schema: dict[str, int] = {
             'fg': 15,
             'bg': 243,
@@ -49,13 +58,20 @@ class Repl():
 
         self.input_translation_mode: str = "simple"
         self.input_queue:queue.Queue[InputEvent] = queue.Queue()
-        self.key_queue:queue.Queue[bytearray] = queue.Queue()
-        self.key_reader_active = True
-        self.key_thread: threading.Thread = threading.Thread(target=self.key_reader, daemon=True)
-        self.key_thread.start()
-        self.input_loop_active = True
-        self.input_thread: threading.Thread = threading.Thread(target=self.input_loop, daemon=True)
-        self.input_thread.start()
+        if engine == "TEXT" or engine == "SDL2":
+            self.key_queue:queue.Queue[bytearray] = queue.Queue()
+            self.key_reader_active = True
+            self.key_thread: threading.Thread = threading.Thread(target=self.key_reader, daemon=True)
+            self.key_thread.start()
+            self.input_loop_active = True
+            self.input_thread: threading.Thread = threading.Thread(target=self.input_loop, daemon=True)
+            self.input_thread.start()
+        elif engine == "SDL2":
+            sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportAny]
+            sdl2.sdlttf.TTF_Init()  # pyright: ignore[reportUnknownMemberType]
+        else:
+            self.log.error(f"State error {engine}")
+            exit(1)
 
     def get_ansi_char(self) -> str | None:
         fd = sys.stdin.fileno()
@@ -227,17 +243,27 @@ class Repl():
         if flush is True:
             _ = sys.stdout.flush()
 
+    def init_screen(self, size_x:int =0, size_y:int=0) -> bool:
+        if self.engine == "TEXT":
+            cols, rows = os.get_terminal_size()
+            if size_x == 0 or size_x > cols:
+                size_x = cols
+            if size_y == 0 or size_y > rows:
+                size_y = rows
+            
+            if self.cur_y + size_y >= rows:
+                for _ in range(size_y - 1):
+                    print()
+                self.cur_y -= size_y + self.cur_y - rows
+            return True
+        elif self.engine == "SDL2":
+            self.log.error("NOT IMPLEMENTED")
+            return False
+        else:
+            self.log.error(f"Bad engine {self.engine} at init")
+        return False
 
     def create_pad(self, buffer:list[str], height: int, width:int = 0, offset_y:int = 0, offset_x:int = 0, left_border:int=0, bottom_border:int=0, schema: dict[str, int] | None = None) -> int:
-        cols, rows = os.get_terminal_size()
-        if width + offset_x > cols:
-            width = cols - offset_x
-        if height + offset_y > rows:
-            height = rows - offset_y
-        if self.cur_y + offset_y + height >= rows:
-            for _ in range(height + offset_y - 1):
-                print()
-            self.cur_y -= height + self.cur_y + offset_y - rows
         if schema is None:
             schema = self.default_schema
         pad: Pad = Pad(
@@ -541,8 +567,11 @@ class Repl():
 
 
 if __name__ == "__main__":
-    repl = Repl()
+    repl = Repl(engine="TEXT")
+    if repl.init_screen(40,100) is False:
+        repl.log.error("Init failed.")
+        exit(1)
     buffer: list[str] = ["That", "is", "the", "initial", "long", "text"]
     id = repl.create_editor(buffer, 40,100, 1, 3, None, True, True)
-    print()
-    print(buffer)
+    # print()
+    # print(buffer)

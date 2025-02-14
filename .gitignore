@@ -6,6 +6,7 @@ lib64
 include/
 etc/
 share/
+typings/
 .ipynb_checkpoints/
 pyvenv.cfg
 *~
