@@ -57,7 +57,7 @@ class EmbeddingSearch:
         with open(repo_file, 'w') as f:
             json.dump(self.repos, f)
 
-    def read_pdf_library(self, library_name: str, library_path: str, single_pages: bool = False) -> int:
+    def read_pdf_library(self, library_name: str, library_path: str, pdf_cache:str) -> int:
         l_path = os.path.abspath(os.path.expanduser(library_path))
         if l_path[-1] != '/':
             l_path += '/'
@@ -65,51 +65,33 @@ class EmbeddingSearch:
         if os.path.exists(l_path) is False:
             self.log.error("library_path {library_path} does not exist!")
             return count
-        if library_name in self.repos and self.repos[library_name] != l_path:
-            self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]}, ignored!")
+        repo_path =  os.path.abspath(os.path.expanduser(self.repos[library_name]))
+        if repo_path[-1] != '/':
+            repo_path += '/'
+        if library_name in self.repos and self.repos[library_name] != l_path and repo_path != l_path:
+            self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {repo_path}, ignored!")
         else:
-            self.repos[library_name] = l_path
+            self.repos[library_name] = library_path
             self.save_repos()
         for root, _dir, files in os.walk(l_path):
             for file in files:
-                aborted: bool = False
                 if file.endswith('.pdf'):
                     rel_path = root[len(l_path):]
-                    full_path = os.path.join(root, file)
-                    doc = pymupdf.open(full_path)
-                    page_no:int = 0
-                    entry: EmbeddingEntry
-                    if single_pages is True:  # Every page is it's own doc
-                        for page in doc:
-                            page_no += 1
-                            descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}/page_{page_no}"
-                            page_text = page.get_text()  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue, reportUnknownVariableType]
-                            if isinstance(page_text, str) is False:
-                                self.log.error(f"Can't read {rel_path} page {page_no}, ignoring page")
-                                continue
-                            page_text = cast(str, page_text)
-                            if len(page_text) == 0:
-                                continue
-                            entry = {
-                                'filename': file,
-                                'text': page_text,
-                                'page_no': page_no,
-                                'emb_ten_idx': -1,
-                                'emb_ten_size': -1
-                            }
-                            if descriptor_path in self.texts:
-                                if self.texts[descriptor_path]['text'] == page_text:
-                                    aborted = True  # Don't test for more pages, if page checked is identical
-                                    break
-                                else:
-                                    self.log.info(f"Document page {descriptor_path} has been modified, recalculating")
-                            self.texts[descriptor_path] = entry
-                            count += 1
-                        if aborted is False:
-                            self.log.info(f"Read {rel_path}/{file}, {page_no - 1} pages.")
-                    else:  # entire PDF is one text doc
+                    
+                    pdf_cache_path = os.path.join(pdf_cache, rel_path)
+                    cache_file = os.path.splitext(file)[0] + ".txt"
+                    pdf_cache_file = os.path.join(pdf_cache_path, cache_file)
+                    descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}"
+                    if os.path.exists(pdf_cache_file) is True:
+                        with open(pdf_cache_file, "r") as f:
+                            pdf_text = f.read()
+                        page_no = 1
+                    else:
+                        full_path = os.path.join(root, file)
+                        doc = pymupdf.open(full_path)
+                        page_no:int = 0
+                        entry: EmbeddingEntry
                         pdf_text: str = ""
-                        descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}"
                         for page in doc:
                             page_no += 1
                             page_text = page.get_text()  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue, reportUnknownVariableType]
@@ -120,18 +102,21 @@ class EmbeddingSearch:
                             if len(page_text) == 0:
                                 continue
                             pdf_text += page_text
-                        entry = {
-                            'filename': file,
-                            'text': pdf_text,
-                            'page_no': page_no,
-                            'emb_ten_idx': -1,
-                            'emb_ten_size': -1
-                        }
-                        if descriptor_path in self.texts:
-                            if self.texts[descriptor_path]['text'] == pdf_text:
-                                continue
-                        self.texts[descriptor_path] = entry
-                        count += 1                       
+                        os.makedirs(pdf_cache_path, exist_ok=True)
+                        with open(pdf_cache_file, 'w') as f:
+                            _ = f.write(pdf_text)
+                    entry = {
+                        'filename': file,
+                        'text': pdf_text,
+                        'page_no': page_no,
+                        'emb_ten_idx': -1,
+                        'emb_ten_size': -1
+                    }
+                    if descriptor_path in self.texts:
+                        if self.texts[descriptor_path]['text'] == pdf_text:
+                            continue
+                    self.texts[descriptor_path] = entry
+                    count += 1                       
         return count
 
     def read_text_library(self, library_name: str, library_path: str, extensions:list[str] | None = None) -> int:
@@ -144,10 +129,13 @@ class EmbeddingSearch:
         if os.path.exists(l_path) is False:
             self.log.error("library_path {library_path} does not exist!")
             return count
-        if library_name in self.repos and self.repos[library_name] != l_path:
-            self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]}, ignored!")
+        repo_path =  os.path.abspath(os.path.expanduser(self.repos[library_name]))
+        if repo_path[-1] != '/':
+            repo_path += '/'
+        if library_name in self.repos and self.repos[library_name] != l_path and repo_path != l_path:
+            self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {repo_path}, ignored!")
         else:
-            self.repos[library_name] = l_path
+            self.repos[library_name] = library_path
             self.save_repos()
         for root, _dir, files in os.walk(l_path):
             for file in files:

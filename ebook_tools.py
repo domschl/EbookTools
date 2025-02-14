@@ -18,18 +18,18 @@ from ai_search import EmbeddingSearch, SearchResult
 
 
 class ConfigDict(TypedDict):
-     calibre_path: str
-     kindle_path: str
-     meta_path: str
-     book_text_lib: str
-     notes_path: str
-     notes_books_subfolder: str
-     book_text_lib_embeddings: str
-     embeddings_model: str
-     chunk_size: int
-     chunk_overlap: int
-     export_formats: list[str]
+    calibre_path: str
+    kindle_path: str
+    meta_path: str
+    book_text_lib: str
+    notes_path: str
+    notes_books_subfolder: str
+    export_formats: list[str]
      
+class EmbeddingsModel(TypedDict):
+    model_name: str
+    chunk_size: int
+    chunk_overlap: int
 
 if __name__ == "__main__":
     # Init logging
@@ -170,10 +170,6 @@ if __name__ == "__main__":
             "book_text_lib": "~/BookTextLibrary",
             "notes_path": "~/Notes",
             "notes_books_subfolder": "Books",
-            "book_text_lib_embeddings": "~/BookTextLibraryEmbeddings",
-             "embeddings_model": "nomic-embed-text",
-             "chunk_size": 2048,
-             "chunk_overlap": 0,
             "export_formats": ["epub", "pdf"],
         }
         # Create dir
@@ -181,6 +177,20 @@ if __name__ == "__main__":
         with open(config_file, "w") as f:
             _ = f.write(json.dumps(default_config, indent=4))
         logger.info(f"Config file {config_file} created, please edit it")
+        default_model: EmbeddingsModel = {
+             "model_name": "snowflake-arctic-embed2",
+             "chunk_size": 2048,
+             "chunk_overlap": 0
+        }
+        txt_data = os.path.expanduser(default_config['book_text_lib'])
+        os.makedirs(os.path.join(txt_data, "Texts"), exist_ok=True)
+        os.makedirs(os.path.join(txt_data, "PDF_Texts"), exist_ok=True)
+        embs = os.path.join(txt_data, "Embeddings")
+        os.makedirs(embs, exist_ok=True)
+        model_file = os.path.join(embs, 'model.json')
+        with open(model_file, "w") as f:
+             _ = f.write(json.dumps(default_model, indent=4))
+        logger.info(f"Model file {model_file} created, please edit it")
         exit(1)
     else:
         try:
@@ -189,25 +199,34 @@ if __name__ == "__main__":
             calibre_path: str = os.path.expanduser(config["calibre_path"])
             kindle_path = os.path.expanduser(config["kindle_path"])
             meta_path = os.path.expanduser(config["meta_path"])
-            book_text_lib = os.path.expanduser(config["book_text_lib"])
+            book_text_lib_root = os.path.expanduser(config["book_text_lib"])
             notes_path = os.path.expanduser(config["notes_path"])
             notes_books_path = os.path.join(notes_path, config["notes_books_subfolder"])
-            book_text_lib_embeddings: str = os.path.expanduser(config["book_text_lib_embeddings"])
-            embeddings_model = config["embeddings_model"]
-            chunk_size = config["chunk_size"]
-            chunk_overlap = config["chunk_overlap"]
             export_formats = config["export_formats"]
         except Exception as e:
             logger.error(f"Error reading config file {config_file}: {e}")
             exit(1)
-    paths = [calibre_path, kindle_path, meta_path, notes_path]
+    book_text_lib_embeddings: str = os.path.join(book_text_lib_root, "Embeddings")
+    book_text_lib_texts: str = os.path.join(book_text_lib_root, "Texts")
+    book_text_lib_pdf_texts: str = os.path.join(book_text_lib_root, "PDF_Texts")
+    model_file = os.path.join(book_text_lib_embeddings, 'model.json')
+    model_config: EmbeddingsModel = {
+         "model_name": "",
+         "chunk_size": 2048,
+         "chunk_overlap": 0
+         }
+    if os.path.exists(model_file) is True:
+         with open(model_file, "r") as f:
+              model_config = json.load(f)
+
+    paths = [calibre_path, kindle_path, meta_path, notes_path, book_text_lib_root]
     for p in paths:
         if os.path.exists(p) is False:
             logger.error(
                 f"Path {p} does not exist, please check config file {config_file} or create the directly"
             )
             exit(1)
-
+    
     if do_date_stuff is True:
         timelines = TimeLines()
     else:
@@ -235,10 +254,10 @@ if __name__ == "__main__":
         logger.info(
             f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"
         )
-        if book_text_lib != "" and os.path.exists(book_text_lib):
+        if book_text_lib_texts != "" and os.path.exists(book_text_lib_texts):
             logger.info(f"Calibre Library {calibre.calibre_path}, copying text books")
             txt_books, upd_txt_books, txt_debris = calibre.export_calibre_books(
-                book_text_lib,
+                book_text_lib_texts,
                 format=["txt"],
                 dry_run=dry_run,
                 delete=delete,
@@ -349,17 +368,17 @@ if __name__ == "__main__":
     if do_embed is True:
         if emb is None:
              emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
-        logger.info(f"Loading text library: {book_text_lib}")
+        logger.info(f"Loading text library: {book_text_lib_texts}")
         book_cnt = 0
         book_cnt += emb.read_text_library(library_name="CalNotes", library_path=notes_path, extensions=[".md"])
-        book_cnt += emb.read_text_library("CalText", book_text_lib, extensions=[".txt"])
+        book_cnt += emb.read_text_library("CalText", book_text_lib_texts, extensions=[".txt"])
         logger.info(f"{book_cnt} text books+notes loaded, loading PDFs...")
-        book_cnt += emb.read_pdf_library(library_name="CalPdf", library_path=meta_path)
+        book_cnt += emb.read_pdf_library(library_name="CalPdf", library_path=meta_path, pdf_cache=book_text_lib_pdf_texts)
         logger.info(f"{book_cnt} pdf+text books loaded, generating embeddings...")
-        emb.gen_embeddings(model=embeddings_model, library_name="CalNotes", verbose=True)
-        emb.gen_embeddings(model=embeddings_model, library_name="CalText", verbose=True)
+        emb.gen_embeddings(model=model_config['model_name'], library_name="CalNotes", verbose=True)
+        emb.gen_embeddings(model=model_config['model_name'], library_name="CalText", verbose=True)
         logger.info("Text embeddings processed")
-        emb.gen_embeddings(model=embeddings_model, library_name="CalPdf", verbose=True)
+        emb.gen_embeddings(model=model_config['model_name'], library_name="CalPdf", verbose=True)
         logger.info("PDF embeddings processed")
     if do_search is True:
         search_spec = cast(str, args.keywords)
@@ -373,7 +392,7 @@ if __name__ == "__main__":
         max_results = 10
         context = 48
         context_steps = 5
-        results: list[SearchResult] | None = emb.search_embeddings(model=embeddings_model, search_text=search_spec, yellow_liner=True, context=context, context_steps=context_steps, max_results=max_results)
+        results: list[SearchResult] | None = emb.search_embeddings(model=model_config['model_name'], search_text=search_spec, yellow_liner=True, context=context, context_steps=context_steps, max_results=max_results)
         if results is not None and len(results) > 0:
             for i in range(max_results):
                 result = results[i]
@@ -415,4 +434,4 @@ if __name__ == "__main__":
             print("No search result available!")
         
     if do_bookdates is True:
-        logger.error(f"Can't access the book library texts at {book_text_lib}")
+        logger.error(f"Can't access the book library texts at {book_text_lib_root}")
