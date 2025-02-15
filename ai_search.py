@@ -71,6 +71,9 @@ class EmbeddingSearch:
         if library_name in self.repos and self.repos[library_name] != l_path and repo_path != l_path:
             self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {repo_path}, ignored!")
         else:
+            home = os.path.expanduser("~")
+            if library_path.startswith(home):
+                library_path = "~" + library_path[len(home):]
             self.repos[library_name] = library_path
             self.save_repos()
         for root, _dir, files in os.walk(l_path):
@@ -135,6 +138,9 @@ class EmbeddingSearch:
         if library_name in self.repos and self.repos[library_name] != l_path and repo_path != l_path:
             self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {repo_path}, ignored!")
         else:
+            home = os.path.expanduser("~")
+            if library_path.startswith(home):
+                library_path = "~" + library_path[len(home):]
             self.repos[library_name] = library_path
             self.save_repos()
         for root, _dir, files in os.walk(l_path):
