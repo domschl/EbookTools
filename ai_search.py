@@ -59,17 +59,12 @@ class EmbeddingSearch:
 
     def read_pdf_library(self, library_name: str, library_path: str, pdf_cache:str) -> int:
         l_path = os.path.abspath(os.path.expanduser(library_path))
-        # if l_path[-1] != '/':
-        #     l_path += '/'
         count = 0
         if os.path.exists(l_path) is False:
             self.log.error("library_path {library_path} does not exist!")
             return count
-        repo_path =  os.path.abspath(os.path.expanduser(self.repos[library_name]))
-        # if repo_path[-1] != '/':
-        #    repo_path += '/'
-        if library_name in self.repos and self.repos[library_name] != l_path and repo_path != l_path:
-            self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {repo_path}, ignored!")
+        if library_name in self.repos and self.repos[library_name] != l_path and os.path.abspath(os.path.expanduser(self.repos[library_name])) != l_path:
+            self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {os.path.abspath(os.path.expanduser(self.repos[library_name]))}, ignored!")
         else:
             home = os.path.expanduser("~")
             if library_path.startswith(home):
@@ -126,17 +121,12 @@ class EmbeddingSearch:
         if extensions is None:
             extensions = [".txt"]
         l_path = os.path.abspath(os.path.expanduser(library_path))
-        # if l_path[-1] != '/':
-        #     l_path += '/'
         count = 0
         if os.path.exists(l_path) is False:
             self.log.error("library_path {library_path} does not exist!")
             return count
-        repo_path =  os.path.abspath(os.path.expanduser(self.repos[library_name]))
-        # if repo_path[-1] != '/':
-        #     repo_path += '/'
-        if library_name in self.repos and self.repos[library_name] != l_path and repo_path != l_path:
-            self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {repo_path}, ignored!")
+        if library_name in self.repos and self.repos[library_name] != l_path and os.path.abspath(os.path.expanduser(self.repos[library_name])) != l_path:
+            self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {os.path.abspath(os.path.expanduser(self.repos[library_name]))}, ignored!")
         else:
             home = os.path.expanduser("~")
             if library_path.startswith(home):
@@ -236,22 +226,27 @@ class EmbeddingSearch:
         last_save = time.time()
         cnt: int = 0
         max_cnt = len(self.texts.keys())
-        index = 0
+        if self.emb_ten is None:
+            index = 0
+        else:
+            index = len(self.emb_ten)
         for desc in self.texts:
             if self.texts[desc]['emb_ten_idx'] != -1 and self.texts[desc]['emb_ten_size'] != -1:
-                index = self.texts[desc]['emb_ten_idx'] + self.texts[desc]['emb_ten_size']
+                # index = self.texts[desc]['emb_ten_idx'] + self.texts[desc]['emb_ten_size']
                 cnt += 1
                 # self.log.info(f"Skipping {desc}, already processed, {cnt}/{max_cnt}, index={index}")
                 continue
             if desc.startswith(lib_desc):
                 text: str = self.texts[desc]['text']
                 if len(text) == 0:
-                    self.log.warning(f"Text for {desc} is empty, ignoring!")
+                    # self.log.warning(f"Text for {desc} is empty, ignoring!")
                     continue
                 # text_chunks = [self.get_chunk(text, i) for i in range((len(text)-1) // chunk_size + 1) ]
                 text_chunks = self.get_chunks(text, av_chunk_size, av_chunk_overlay, chunk_method)
                 self.texts[desc]['emb_ten_idx'] = index
                 self.texts[desc]['emb_ten_size'] = len(text_chunks)
+                if verbose is True:
+                    print(f"Generating embedding for {desc}...")
                 response = ollama.embed(model=model, input=text_chunks)
                 embedding = np.asarray(response["embeddings"], dtype=np.float32)
                 if len(embedding.shape)<2 or embedding.shape[0] != len(text_chunks):
@@ -261,10 +256,10 @@ class EmbeddingSearch:
                     self.emb_ten = embedding
                 else:
                     self.emb_ten = np.append(self.emb_ten, embedding, axis=0)  
-                index += len(text_chunks)
+                index = len(self.emb_ten)  # += len(text_chunks)
                 cnt += 1
                 if verbose is True and self.emb_ten is not None:
-                     print(f"Generated {cnt}/{max_cnt}: {self.emb_ten.shape}, embeddings for {desc}")
+                     print(f"   Generated {cnt}/{max_cnt}: {self.emb_ten.shape}")
                 if save_every_sec is not None:
                     if time.time() - last_save > save_every_sec:
                         self.save_text_embeddings()
