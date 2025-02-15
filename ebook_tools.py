@@ -394,7 +394,7 @@ if __name__ == "__main__":
         context_steps = 5
         results: list[SearchResult] | None = emb.search_embeddings(model=model_config['model_name'], search_text=search_spec, yellow_liner=True, context=context, context_steps=context_steps, max_results=max_results)
         if results is not None and len(results) > 0:
-            for i in range(max_results):
+            for i in range(len(results)):
                 result = results[i]
                 y_min: float | None = None
                 y_max: float | None = None
