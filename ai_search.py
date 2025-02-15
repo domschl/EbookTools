@@ -59,15 +59,15 @@ class EmbeddingSearch:
 
     def read_pdf_library(self, library_name: str, library_path: str, pdf_cache:str) -> int:
         l_path = os.path.abspath(os.path.expanduser(library_path))
-        if l_path[-1] != '/':
-            l_path += '/'
+        # if l_path[-1] != '/':
+        #     l_path += '/'
         count = 0
         if os.path.exists(l_path) is False:
             self.log.error("library_path {library_path} does not exist!")
             return count
         repo_path =  os.path.abspath(os.path.expanduser(self.repos[library_name]))
-        if repo_path[-1] != '/':
-            repo_path += '/'
+        # if repo_path[-1] != '/':
+        #    repo_path += '/'
         if library_name in self.repos and self.repos[library_name] != l_path and repo_path != l_path:
             self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {repo_path}, ignored!")
         else:
@@ -76,7 +76,7 @@ class EmbeddingSearch:
         for root, _dir, files in os.walk(l_path):
             for file in files:
                 if file.endswith('.pdf'):
-                    rel_path = root[len(l_path):]
+                    rel_path = root[len(l_path)+1:]
                     
                     pdf_cache_path = os.path.join(pdf_cache, rel_path)
                     cache_file = os.path.splitext(file)[0] + ".txt"
@@ -123,15 +123,15 @@ class EmbeddingSearch:
         if extensions is None:
             extensions = [".txt"]
         l_path = os.path.abspath(os.path.expanduser(library_path))
-        if l_path[-1] != '/':
-            l_path += '/'
+        # if l_path[-1] != '/':
+        #     l_path += '/'
         count = 0
         if os.path.exists(l_path) is False:
             self.log.error("library_path {library_path} does not exist!")
             return count
         repo_path =  os.path.abspath(os.path.expanduser(self.repos[library_name]))
-        if repo_path[-1] != '/':
-            repo_path += '/'
+        # if repo_path[-1] != '/':
+        #     repo_path += '/'
         if library_name in self.repos and self.repos[library_name] != l_path and repo_path != l_path:
             self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {repo_path}, ignored!")
         else:
@@ -146,7 +146,7 @@ class EmbeddingSearch:
                     self.log.error(f"Can't identify extension of {file}, ignoring")
                     continue
                 if ext in extensions:
-                    rel_path = root[len(l_path):]
+                    rel_path = root[len(l_path)+1:]
                     full_path = os.path.join(root, file)
                     with open(full_path, 'r', encoding='utf-8') as f:
                         try:
