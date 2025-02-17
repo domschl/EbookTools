@@ -180,7 +180,7 @@ if __name__ == "__main__":
         default_model: EmbeddingsModel = {
              "model_name": "snowflake-arctic-embed2",
              "chunk_size": 2048,
-             "chunk_overlap": 0
+             "chunk_overlap": 2048 // 3,
         }
         txt_data = os.path.expanduser(default_config['book_text_lib'])
         os.makedirs(os.path.join(txt_data, "Texts"), exist_ok=True)
