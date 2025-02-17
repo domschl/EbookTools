@@ -297,29 +297,30 @@ class EmbeddingsSearch:
         if migrate is True:
             self.save_text_embeddings()
             self.log.info("Migration of embeddings-files complete.")
-        self.texts_ptr_list = list(self.texts.keys())
-        tpi = 0
-        eti: int = self.texts[self.texts_ptr_list[tpi]]['emb_ten_idx']
-        ets: int = self.texts[self.texts_ptr_list[tpi]]['emb_ten_size']
-        if self.emb_ten is not None and skip_tables is False:
-            self.emb_ten_idx_to_text_ptr = []
-            for i in range(self.emb_ten.shape[0]):
-                if i<eti:
-                    self.log.error(f"Alg failed (1) at {i}, {eti}")
+        if skip_tables is False:
+            self.texts_ptr_list = list(self.texts.keys())
+            tpi = 0
+            eti: int = self.texts[self.texts_ptr_list[tpi]]['emb_ten_idx']
+            ets: int = self.texts[self.texts_ptr_list[tpi]]['emb_ten_size']
+            if self.emb_ten is not None:
+                self.emb_ten_idx_to_text_ptr = []
+                for i in range(self.emb_ten.shape[0]):
+                    if i<eti:
+                        self.log.error(f"Alg failed (1) at {i}, {eti}")
+                        exit(1)
+                    if i>eti+ets:
+                        self.log.error(f"Alg failed (2) at {i}, {ets}, {eti}")
+                        exit(1)
+                    self.emb_ten_idx_to_text_ptr.append(tpi)
+                    if i == eti+ets:
+                        eti = -1
+                        while eti == -1:
+                            tpi += 1
+                            eti = self.texts[self.texts_ptr_list[tpi]]['emb_ten_idx']
+                            ets = self.texts[self.texts_ptr_list[tpi]]['emb_ten_size']
+                if len(self.emb_ten_idx_to_text_ptr) != self.emb_ten.shape[0]:
+                    self.log.error(f"Alg failure (3) {len(self.emb_ten_idx_to_text_ptr)} != {self.emb_ten.shape[0]}")
                     exit(1)
-                if i>eti+ets:
-                    self.log.error(f"Alg failed (2) at {i}, {ets}, {eti}")
-                    exit(1)
-                self.emb_ten_idx_to_text_ptr.append(tpi)
-                if i == eti+ets:
-                    eti = -1
-                    while eti == -1:
-                        tpi += 1
-                        eti = self.texts[self.texts_ptr_list[tpi]]['emb_ten_idx']
-                        ets = self.texts[self.texts_ptr_list[tpi]]['emb_ten_size']
-            if len(self.emb_ten_idx_to_text_ptr) != self.emb_ten.shape[0]:
-                self.log.error(f"Alg failure (3) {len(self.emb_ten_idx_to_text_ptr)} != {self.emb_ten.shape[0]}")
-                exit(1)
         return count
                 
     def gen_embeddings(self, library_name: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0,
