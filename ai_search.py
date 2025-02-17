@@ -3,32 +3,48 @@ import os
 import json
 import time
 from typing import TypedDict, override, cast
-import ollama
 import numpy.typing
 import numpy as np
 import pymupdf  # pyright: ignore[reportMissingTypeStubs]
+try:
+    import ollama
+    ollama_available:bool = True
+except ImportError:
+    ollama_available = False
 
 
 class OllamaEmbeddings:
-    def __init__(self, model:str, matmul:str="numpy"):
-        # Disable verbose Ollama:
+    def __init__(self, model:str, model_location:str="", matmul:str="numpy"):
+        self.log: logging.Logger = logging.getLogger("OllamaEmbedder")
+        self.model_available:bool = ollama_available
+        if ollama_available is False:
+            self.log.error("Failed to load ollama module, is it installed?")
         matmuls = ["numpy"]
         if matmul in matmuls:
             self.matmul_engine:str = matmul
         else:
             self.matmul_engine = "numpy"
-        self.model: str = model
-        self.log: logging.Logger = logging.getLogger("OllamaEmbedder")
-        murks_logger = logging.getLogger("httpx")
-        murks_logger.setLevel(logging.ERROR)
-
+        if ollama_available is True:
+            try:
+                _ = ollama.show(model)  # pyright:ignore[reportPossiblyUnboundVariable]
+            except Exception as e:
+                self.log.error(f"Failed to load model {model} with ollama: {e}")
+                self.model_available = False
+            self.model: str = model
+            # Disable verbose Ollama:
+            murks_logger = logging.getLogger("httpx")
+            murks_logger.setLevel(logging.ERROR)
+    
     def embed(self, text_chunks: list[str], description:str | None=None, normalize:bool=True) -> np.typing.NDArray[np.float32]:
+        if self.model_available is False:
+            self.log.error("Embeddings model is not available")
+            return np.asarray([], dtype=np.float32)
         if description is not None:
             self.log.info(f"Generating embedding for {description}...")
-        response = ollama.embed(model=self.model, input=text_chunks)
+        response = ollama.embed(model=self.model, input=text_chunks)  # pyright:ignore[reportPossiblyUnboundVariable]
         embeddings: np.typing.NDArray[np.float32] = np.asarray(response["embeddings"], dtype=np.float32)
         if normalize is True:
-            embeddings = (embeddings.transpose() / np.linalg.norm(embeddings, axis=1)).transpose()
+            embeddings = (embeddings.transpose() / np.linalg.norm(embeddings, axis=1)).transpose()  #pyright:ignore[reportAny]
         return embeddings
 
     def matmul(self, embeddings:np.typing.NDArray[np.float32], search_vector:np.typing.NDArray[np.float32]) -> np.typing.NDArray[np.float32]:
@@ -60,11 +76,12 @@ class SearchResult(TypedDict):
 
 
 class EmbeddingsSearch:
-    def __init__(self, embeddings_path: str, model: str, embeddings_engine:str = "ollama", epsilon: float = 1e-6):
+    def __init__(self, embeddings_path: str, model: str, version:str="", embeddings_engine:str = "ollama", epsilon: float = 1e-6):
         self.log: logging.Logger = logging.getLogger("EmbSearch")
         self.modes: list[str] = ["filepath", "textlibrary"]
         self.epsilon: float = epsilon
         self.model:str = model
+        self.version:str = version
         embeddings_engines: list[str] = ["ollama"]
         if embeddings_engine in embeddings_engines:
             self.embeddings_engine:str = embeddings_engine
@@ -73,6 +90,8 @@ class EmbeddingsSearch:
             
         self.texts: dict[str, EmbeddingEntry] = {}
         self.emb_ten: np.typing.NDArray[np.float32] | None = None
+        self.texts_ptr_list: list[str] = []
+        self.emb_ten_idx_to_text_ptr: list[int] = []
         self.repos: dict[str, str] = {}
         e_path = os.path.expanduser(embeddings_path)
         if os.path.exists(e_path) is False:
@@ -239,16 +258,27 @@ class EmbeddingsSearch:
         if self.emb_ten is None:
             self.log.error("No embeddings available")
             return
-        emb_file = os.path.join(self.embeddings_path, f"library_embeddings.npz")
-        desc_file = os.path.join(self.embeddings_path, f"library_desc.json")
+        emb_file = os.path.join(self.embeddings_path, f"{self.model}{self.version}_library_embeddings.npz")
+        desc_file = os.path.join(self.embeddings_path, f"{self.model}{self.version}_library_desc.json")
         np.savez(emb_file, array=self.emb_ten)
         with open(desc_file, 'w') as f:
             json.dump(self.texts, f)
         self.log.info(f"Info saved {emb_file} and {desc_file}")
 
     def load_text_embeddings(self, normalize:bool = False) -> int:
-        emb_file = os.path.join(self.embeddings_path, f"library_embeddings.npz")
-        desc_file = os.path.join(self.embeddings_path, f"library_desc.json")
+        migrate:bool = False
+        emb_file = os.path.join(self.embeddings_path, f"{self.model}{self.version}_library_embeddings.npz")
+        if os.path.exists(emb_file) is False:
+            emb_file = os.path.join(self.embeddings_path, f"library_embeddings.npz")
+            if os.path.exists(emb_file) is True:
+                self.log.warning(f"Migrating old embeddings filename {emb_file}")
+                migrate = True
+        desc_file = os.path.join(self.embeddings_path, f"{self.model}{self.version}_library_desc.json")
+        if os.path.exists(desc_file) is False:
+            desc_file = os.path.join(self.embeddings_path, f"library_desc.json")
+            if os.path.exists(desc_file) is True:
+                self.log.warning(f"Migrating old embeddings description filename {desc_file}")
+                migrate = True
         if os.path.exists(emb_file):
             self.emb_ten = np.load(emb_file)['array']
             if normalize is True and self.emb_ten is not None:
@@ -261,6 +291,32 @@ class EmbeddingsSearch:
             self.log.info(f"Embeddings loaded: texts: {len(self.texts)}, emb_ten: {self.emb_ten.shape}")
         else:
             self.log.info(f"Embeddings loaded: texts: {len(self.texts)}")
+        if migrate is True:
+            self.save_text_embeddings()
+            self.log.info("Migration of embeddings-files complete.")
+        self.texts_ptr_list = list(self.texts.keys())
+        tpi = 0
+        eti: int = self.texts[self.texts_ptr_list[tpi]]['emb_ten_idx']
+        ets: int = self.texts[self.texts_ptr_list[tpi]]['emb_ten_size']
+        if self.emb_ten is not None:
+            self.emb_ten_idx_to_text_ptr = []
+            for i in range(self.emb_ten.shape[0]):
+                if i<eti:
+                    self.log.error(f"Alg failed (1) at {i}, {eti}")
+                    exit(1)
+                if i>eti+ets:
+                    self.log.error(f"Alg failed (2) at {i}, {ets}, {eti}")
+                    exit(1)
+                self.emb_ten_idx_to_text_ptr.append(tpi)
+                if i == eti+ets:
+                    eti = -1
+                    while eti == -1:
+                        tpi += 1
+                        eti = self.texts[self.texts_ptr_list[tpi]]['emb_ten_idx']
+                        ets = self.texts[self.texts_ptr_list[tpi]]['emb_ten_size']
+            if len(self.emb_ten_idx_to_text_ptr) != self.emb_ten.shape[0]:
+                self.log.error(f"Alg failure (3) {len(self.emb_ten_idx_to_text_ptr)} != {self.emb_ten.shape[0]}")
+                exit(1)
         return count
                 
     def gen_embeddings(self, library_name: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0,
@@ -275,20 +331,17 @@ class EmbeddingsSearch:
             index = len(self.emb_ten)
         for desc in self.texts:
             if self.texts[desc]['emb_ten_idx'] != -1 and self.texts[desc]['emb_ten_size'] != -1:
-                # index = self.texts[desc]['emb_ten_idx'] + self.texts[desc]['emb_ten_size']
                 cnt += 1
-                # self.log.info(f"Skipping {desc}, already processed, {cnt}/{max_cnt}, index={index}")
                 continue
             if desc.startswith(lib_desc):
                 text: str = self.texts[desc]['text']
                 if len(text) == 0:
-                    # self.log.warning(f"Text for {desc} is empty, ignoring!")
                     continue
-                # text_chunks = [self.get_chunk(text, i) for i in range((len(text)-1) // chunk_size + 1) ]
                 text_chunks = self.get_chunks(text, av_chunk_size, av_chunk_overlay, chunk_method)
                 self.texts[desc]['emb_ten_idx'] = index
                 self.texts[desc]['emb_ten_size'] = len(text_chunks)
 
+                t_start = time.time()
                 embeddings = self.engine.embed(text_chunks, desc, normalize=True)
                 
                 if len(embeddings.shape)<2 or embeddings.shape[0] != len(text_chunks):
@@ -298,10 +351,11 @@ class EmbeddingsSearch:
                     self.emb_ten = embeddings
                 else:
                     self.emb_ten = np.append(self.emb_ten, embeddings, axis=0)  
-                index = len(self.emb_ten)  # += len(text_chunks)
+                index = len(self.emb_ten)
                 cnt += 1
+                dt = (time.time() - t_start) / len(text_chunks)
                 if verbose is True and self.emb_ten is not None:
-                     print(f"   Generated {cnt}/{max_cnt}: {self.emb_ten.shape}")
+                     print(f"   Generated {cnt}/{max_cnt}: {self.emb_ten.shape}, {dt:0.5f} sec per embedding-vector")
                 if save_every_sec is not None:
                     if time.time() - last_save > save_every_sec:
                         self.save_text_embeddings()
@@ -328,15 +382,10 @@ class EmbeddingsSearch:
                 i0 = i0 - (i1 - len(text))
                 i1 = len(text)
             clr.append(text[i0:i1])
-
+        if clr == []:
+            clr = [text]
         embs = self.engine.embed(clr, normalize=True)
         yellow = np.asarray(self.engine.matmul(embs, search_embeddings.transpose()), np.float32)
-        # yellow: list[float] = []
-        # for i in range(embs.shape[0]):
-        #     emb = embs[i,:]
-        #     # XXX matrix!
-        #     val: float = np.dot(search_embedding, emb) / np.linalg.norm(emb)
-        #     yellow.append(val)
         return yellow
 
     def search_embeddings(self, search_text: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0,
@@ -344,7 +393,7 @@ class EmbeddingsSearch:
 
         search_text_list = [search_text]
         search_embeddings = self.engine.embed(search_text_list, normalize=True)
-        
+        result: SearchResult
         if len(search_text) > av_chunk_size:
             self.log.warning(f"Search text is longer than av_chunk_size: {len(search_text)}")
         if verbose is True:
@@ -355,40 +404,48 @@ class EmbeddingsSearch:
             return None
         t0 = time.time()
 
+        t0 = time.time()
         idx_vec: np.typing.ArrayLike = self.engine.matmul(self.emb_ten, search_embeddings.transpose())
-        # arg_max = np.argmax(idx_vec)
         idx_list = cast(list[float], idx_vec.tolist())
         idx_idx = list(enumerate(idx_list))
         idx_srt = sorted(idx_idx, key=lambda x: x[1], reverse=True)
-
-        # if idx_srt[0][0] != arg_max:
-        #     print(f"That didn't work! {max_results}")
-        # else:
-        #     print("Wonderful!")
-        
-        for desc in self.texts:
-            entry = self.texts[desc]
-            for res_i in range(max_results):
-                # index_i = idx_srt[res_i][0]
-                arg_max_i = idx_srt[res_i][0]
-                if entry['emb_ten_idx'] <= arg_max_i and entry['emb_ten_idx']+entry['emb_ten_size'] > arg_max_i:
-                    self.log.info(f"{res_i}. {idx_vec[arg_max_i]}: {desc}")
-                    index = arg_max_i - entry['emb_ten_idx']
-                    chunk = self.get_chunk(entry['text'], index, av_chunk_size, av_chunk_overlay, chunk_method)
-                    if yellow_liner is True:
-                        yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
-                    else:
-                        yellow_liner_weights = None
-                    if yellow_liner_weights is not None:
-                        result: SearchResult = {
-                            'cosine': idx_vec[arg_max_i][0],
-                            'desc': desc,
-                            'index': index,
-                            'text': entry['text'],
-                            'chunk': chunk.replace('\n',' '),
-                            'yellow_liner': yellow_liner_weights[:,0]
-                            }
-                        results.append(result)
+        dt = time.time() - t0
+        if dt > 0:
+            dn = self.emb_ten.shape[0] / dt
+            self.log.info(f"Search: {dt:0.4f} sec, performance: {dn:0.2f} embeddings per second compared")
+        for res_i in range(max_results):
+            arg_max_i = idx_srt[res_i][0]
+            ptr = self.emb_ten_idx_to_text_ptr[arg_max_i]
+            txt_name: str = self.texts_ptr_list[ptr]
+            entry = self.texts[txt_name] 
+            self.log.info(f"{res_i}. {idx_vec[arg_max_i]}: {txt_name}")
+            index = arg_max_i - entry['emb_ten_idx']
+            chunk = self.get_chunk(entry['text'], index, av_chunk_size, av_chunk_overlay, chunk_method)
+            if yellow_liner is True:
+                yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
+            else:
+                yellow_liner_weights = None
+            if yellow_liner_weights is not None:
+                result = {
+                    'cosine': idx_vec[arg_max_i][0],
+                    'desc': txt_name,
+                    'index': index,
+                    'text': entry['text'],
+                    'chunk': chunk.replace('\n',' '),
+                    'yellow_liner': yellow_liner_weights[:,0]
+                    }
+                results.append(result)
+            else:
+                result = {
+                    'cosine': idx_vec[arg_max_i][0],
+                    'desc': txt_name,
+                    'index': index,
+                    'text': entry['text'],
+                    'chunk': chunk.replace('\n',' '),
+                    'yellow_liner': None
+                    }
+                results.append(result)
+                
         results = sorted(results, key=lambda x: x['cosine'], reverse=True)
         dt = time.time() - t0
         if verbose is True:
