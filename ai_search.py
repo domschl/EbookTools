@@ -9,6 +9,29 @@ import numpy as np
 import pymupdf  # pyright: ignore[reportMissingTypeStubs]
 
 
+class OllamaEmbeddings:
+    def __init__(self, model:str, matmul:str="numpy"):
+        # Disable verbose Ollama:
+        matmuls = ["numpy"]
+        if matmul in matmuls:
+            self.matmul_engine:str = matmul
+        else:
+            self.matmul_engine = "numpy"
+        self.model: str = model
+        self.log: logging.Logger = logging.getLogger("OllamaEmbedder")
+        murks_logger = logging.getLogger("httpx")
+        murks_logger.setLevel(logging.ERROR)
+
+    def embed(self, text_chunks: list[str], description:str | None=None, normalize:bool=False) -> np.typing.NDArray[np.float32]:
+        if description is not None:
+            self.log.info(f"Generating embedding for {description}...")
+        response = ollama.embed(model=self.model, input=text_chunks)
+        embeddings: np.typing.NDArray[np.float32] = np.asarray(response["embeddings"], dtype=np.float32)
+        if normalize is True:
+            embeddings = embeddings / np.linalg.norm(embeddings, axis=0)
+        return embeddings
+
+    
 class EmbeddingEntry(TypedDict):
     filename: str
     text: str
@@ -23,12 +46,20 @@ class SearchResult(TypedDict):
     text: str
     chunk: str
     yellow_liner: list[float] | None
-    
-class EmbeddingSearch:
-    def __init__(self, embeddings_path: str, epsilon: float = 1e-6):
+
+
+class EmbeddingsSearch:
+    def __init__(self, embeddings_path: str, model: str, embeddings_engine:str = "ollama", epsilon: float = 1e-6):
         self.log: logging.Logger = logging.getLogger("EmbSearch")
         self.modes: list[str] = ["filepath", "textlibrary"]
         self.epsilon: float = epsilon
+        self.model:str = model
+        embeddings_engines: list[str] = ["ollama"]
+        if embeddings_engine in embeddings_engines:
+            self.embeddings_engine:str = embeddings_engine
+            if self.embeddings_engine == "ollama":
+                self.engine: OllamaEmbeddings = OllamaEmbeddings(self.model)
+            
         self.texts: dict[str, EmbeddingEntry] = {}
         self.emb_ten: np.typing.NDArray[np.float32] | None = None
         self.repos: dict[str, str] = {}
@@ -38,9 +69,6 @@ class EmbeddingSearch:
         self.embeddings_path: str = e_path
         _ = self.load_text_embeddings()
         _ = self.load_repos()
-        # Disable verbose Ollama:
-        murks_logger = logging.getLogger("httpx")
-        murks_logger.setLevel(logging.ERROR)
 
     def load_repos(self, silent: bool = True) -> int:
         repo_file = os.path.join(self.embeddings_path, 'repos_embeddings.json')
@@ -207,11 +235,16 @@ class EmbeddingSearch:
             json.dump(self.texts, f)
         self.log.info(f"Info saved {emb_file} and {desc_file}")
 
-    def load_text_embeddings(self) -> int:
+    def load_text_embeddings(self, normalize:bool = True) -> int:   ### REMOVE NORM!
         emb_file = os.path.join(self.embeddings_path, f"library_embeddings.npz")
         desc_file = os.path.join(self.embeddings_path, f"library_desc.json")
         if os.path.exists(emb_file):
             self.emb_ten = np.load(emb_file)['array']
+            if normalize is True and self.emb_ten is not None:
+                self.emb_ten = self.emb_ten / np.linalg.norm(self.emb_ten, axis=0)
+                self.log.warning("NORMALIZED on LOAD! REMOVE THIS CODE!")
+            else:
+                self.log.warning("Normalize NOT REQUESTED!")
             with open(desc_file, 'r') as f:
                 self.texts  = json.load(f)
         count = len(self.texts)
@@ -221,7 +254,7 @@ class EmbeddingSearch:
             self.log.info(f"Embeddings loaded: texts: {len(self.texts)}")
         return count
                 
-    def gen_embeddings(self, model: str, library_name: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0, chunk_method:str = "cut",  save_every_sec: float | None=360):
+    def gen_embeddings(self, library_name: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0, chunk_method:str = "cut",  save_every_sec: float | None=360):
         lib_desc = '{' + library_name + '}'
         last_save = time.time()
         cnt: int = 0
@@ -245,17 +278,16 @@ class EmbeddingSearch:
                 text_chunks = self.get_chunks(text, av_chunk_size, av_chunk_overlay, chunk_method)
                 self.texts[desc]['emb_ten_idx'] = index
                 self.texts[desc]['emb_ten_size'] = len(text_chunks)
-                if verbose is True:
-                    print(f"Generating embedding for {desc}...")
-                response = ollama.embed(model=model, input=text_chunks)
-                embedding = np.asarray(response["embeddings"], dtype=np.float32)
-                if len(embedding.shape)<2 or embedding.shape[0] != len(text_chunks):
-                    self.log.error(f"Assumption on numpy conversion failed, can't generate embeddings for {desc}, result: {embedding.shape}, chunks: {len(text_chunks)}")
+
+                embeddings = self.engine.embed(text_chunks)
+                
+                if len(embeddings.shape)<2 or embeddings.shape[0] != len(text_chunks):
+                    self.log.error(f"Assumption on numpy conversion failed, can't generate embeddings for {desc}, result: {embeddings.shape}, chunks: {len(text_chunks)}")
                     continue
                 if self.emb_ten is None:
-                    self.emb_ten = embedding
+                    self.emb_ten = embeddings
                 else:
-                    self.emb_ten = np.append(self.emb_ten, embedding, axis=0)  
+                    self.emb_ten = np.append(self.emb_ten, embeddings, axis=0)  
                 index = len(self.emb_ten)  # += len(text_chunks)
                 cnt += 1
                 if verbose is True and self.emb_ten is not None:
@@ -274,7 +306,7 @@ class EmbeddingSearch:
             n = self.epsilon
         return float(m / n)
 
-    def yellow_line_it(self, model: str, text: str, search_embedding: numpy.typing.ArrayLike, context:int=16, context_steps:int=1) -> list[float]:
+    def yellow_line_it(self, text: str, search_embedding: numpy.typing.ArrayLike, context:int=16, context_steps:int=1) -> list[float]:
         clr: list[str] = []
         for i in range(0, len(text), context_steps):
             i0 = i - context // 2
@@ -286,8 +318,9 @@ class EmbeddingSearch:
                 i0 = i0 - (i1 - len(text))
                 i1 = len(text)
             clr.append(text[i0:i1])
-        response = ollama.embed(model=model, input=clr)
-        embs = np.asarray(response['embeddings'], dtype=np.float32)
+
+        embs = self.engine.embed(clr)
+
         yellow: list[float] = []
         for i in range(embs.shape[0]):
             emb = embs[i,:]
@@ -295,21 +328,24 @@ class EmbeddingSearch:
             yellow.append(val)
         return yellow
 
-    def search_embeddings(self, model: str, search_text: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0, chunk_method:str="cut", yellow_liner: bool=False, context:int=16, context_steps:int=1, max_results:int=10) -> list[SearchResult] | None:
-        response = ollama.embed(model=model, input=search_text)
+    def search_embeddings(self, search_text: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0,
+                          chunk_method:str="cut", yellow_liner: bool=False, context:int=16, context_steps:int=1, max_results:int=10) -> list[SearchResult] | None:
+
+        search_text_list = [search_text]
+        search_embeddings = self.engine.embed(search_text_list)
         
-        search_embedding = np.array(response["embeddings"][0], dtype=np.float32)
-        search_embedding = search_embedding / np.linalg.norm(search_embedding)
         if len(search_text) > av_chunk_size:
             self.log.warning(f"Search text is longer than av_chunk_size: {len(search_text)}")
         if verbose is True:
-            self.log.info(f"Search-embedding: {search_embedding.shape}")
+            self.log.info(f"Search-embedding: {search_embeddings.shape}")
         results: list[SearchResult] = []
         
         if self.emb_ten is None or self.texts == {}:
             return None
         t0 = time.time()
-        idx_vec: np.typing.ArrayLike = np.asarray(np.matmul(self.emb_ten, search_embedding), dtype=np.float32)
+
+        self.log.warning(f"emb_ten: {self.emb_ten.shape}, search_embs: {search_embeddings.shape}")
+        idx_vec: np.typing.ArrayLike = np.asarray(np.matmul(self.emb_ten, search_embeddings.transpose()), dtype=np.float32)
         # arg_max = np.argmax(idx_vec)
         idx_list = cast(list[float], idx_vec.tolist())
         idx_idx = list(enumerate(idx_list))
@@ -330,11 +366,11 @@ class EmbeddingSearch:
                     index = arg_max_i - entry['emb_ten_idx']
                     chunk = self.get_chunk(entry['text'], index, av_chunk_size, av_chunk_overlay, chunk_method)
                     if yellow_liner is True:
-                        yellow_liner_weights = self.yellow_line_it(model, chunk, search_embedding, context=context, context_steps=context_steps)
+                        yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
                     else:
                         yellow_liner_weights = None
                     result: SearchResult = {
-                        'cosine': idx_vec[arg_max_i],
+                        'cosine': idx_vec[arg_max_i][0],
                         'desc': desc,
                         'index': index,
                         'text': entry['text'],

@@ -14,7 +14,7 @@ from md_tools import MdTools, MDTable
 from indra_tools import IndraTools
 from metadata import Metadata
 from time_lines import TimeLines
-from ai_search import EmbeddingSearch, SearchResult
+from ai_search import EmbeddingsSearch, SearchResult
 
 
 class ConfigDict(TypedDict):
@@ -367,7 +367,7 @@ if __name__ == "__main__":
         logger.info(f"Processed metadata, ok={m_oks}, errors={m_errs}")
     if do_embed is True:
         if emb is None:
-             emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
+             emb = EmbeddingsSearch(embeddings_path = book_text_lib_embeddings, model=model_config['model_name'])
         logger.info(f"Loading text library: {book_text_lib_texts}")
         book_cnt = 0
         book_cnt += emb.read_text_library(library_name="CalNotes", library_path=notes_path, extensions=[".md"])
@@ -375,10 +375,10 @@ if __name__ == "__main__":
         logger.info(f"{book_cnt} text books+notes loaded, loading PDFs...")
         book_cnt += emb.read_pdf_library(library_name="CalPdf", library_path=meta_path, pdf_cache=book_text_lib_pdf_texts)
         logger.info(f"{book_cnt} pdf+text books loaded, generating embeddings...")
-        emb.gen_embeddings(model=model_config['model_name'], library_name="CalNotes", verbose=True)
-        emb.gen_embeddings(model=model_config['model_name'], library_name="CalText", verbose=True)
+        emb.gen_embeddings(library_name="CalNotes", verbose=True)
+        emb.gen_embeddings(library_name="CalText", verbose=True)
         logger.info("Text embeddings processed")
-        emb.gen_embeddings(model=model_config['model_name'], library_name="CalPdf", verbose=True)
+        emb.gen_embeddings(library_name="CalPdf", verbose=True)
         logger.info("PDF embeddings processed")
     if do_search is True:
         search_spec = cast(str, args.keywords)
@@ -387,12 +387,12 @@ if __name__ == "__main__":
             exit(1)
         if emb is None:
             logger.info("Loading embeddings...")
-            emb = EmbeddingSearch(embeddings_path = book_text_lib_embeddings)
+            emb = EmbeddingsSearch(embeddings_path = book_text_lib_embeddings, model=model_config['model_name'])
             logger.info("Embeddings loaded, searching...")
         max_results = 10
         context = 48
         context_steps = 5
-        results: list[SearchResult] | None = emb.search_embeddings(model=model_config['model_name'], search_text=search_spec, yellow_liner=True, context=context, context_steps=context_steps, max_results=max_results)
+        results: list[SearchResult] | None = emb.search_embeddings(search_text=search_spec, yellow_liner=True, context=context, context_steps=context_steps, max_results=max_results)
         if results is not None and len(results) > 0:
             for i in range(len(results)):
                 result = results[i]
@@ -409,12 +409,13 @@ if __name__ == "__main__":
                 if y_max == None:
                      y_max = 1
                 print("-----------------------------------------------")
+                print(f"cos: {result['cosine']}")
                 print(f"Document: {result['desc']}[{result['index']}], certainty: {result['cosine'] * 100.0:2.1f} %")
                 print("-----------------------------------------------")
                 # print(best_chunk)
                 # print(y_min, y_max)
                 if y_min == y_max:
-                     print("Search gave no meaningful result, search-embedding vector is trivial (language not supported?)")
+                     print(f"Search gave no meaningful result: y_min: {y_min}, y_max: {y_max}, search-embedding vector is trivial (language not supported?)")
                      print(result['chunk'])
                      continue
                 if result['yellow_liner'] is not None:
