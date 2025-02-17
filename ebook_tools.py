@@ -398,12 +398,22 @@ if __name__ == "__main__":
                 result = results[i]
                 y_min: float | None = None
                 y_max: float | None = None
-                if result['yellow_liner'] is not None:
-                    for y in result['yellow_liner']:
-                         if y_min is None or y<y_min:
-                              y_min = y
-                         if y_max is None or y>y_max:
-                              y_max = y
+                ryel = result['yellow_liner']
+                yels: list[float] = []
+                if ryel is not None:
+                    if len(ryel.shape) == 1:
+                        lyel = ryel.tolist()
+                        yels = cast(list[float], lyel)
+                        for y in yels:
+                             if y_min is None or y<y_min:
+                                  y_min = y
+                             if y_max is None or y>y_max:
+                                  y_max = y
+                    else:
+                        logger.error(f"Yellow-liner result has wrong shape: {ryel.shape}")
+                        continue
+                else:
+                    logger.error("yellow-liner created None")
                 if y_min == None:
                      y_min = 0
                 if y_max == None:
@@ -418,12 +428,12 @@ if __name__ == "__main__":
                      print(f"Search gave no meaningful result: y_min: {y_min}, y_max: {y_max}, search-embedding vector is trivial (language not supported?)")
                      print(result['chunk'])
                      continue
-                if result['yellow_liner'] is not None:
+                if yels != []:
                     from rich.console import Console
                     console = Console()
                     line = ""
                     for i, c in enumerate(result['chunk']):
-                         yel = (result['yellow_liner'][i // context_steps]-y_min)/(y_max - y_min)
+                         yel:float = (yels[i // context_steps]-y_min)/(y_max - y_min)
                          if yel < 0.5:
                               yel = 0.0
                          col = hex(255 - int(yel*127.0))[2:]

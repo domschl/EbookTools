@@ -31,7 +31,18 @@ class OllamaEmbeddings:
             embeddings = embeddings / np.linalg.norm(embeddings, axis=0)
         return embeddings
 
-    
+    def matmul(self, embeddings:np.typing.NDArray[np.float32], search_vector:np.typing.NDArray[np.float32]) -> np.typing.NDArray[np.float32]:
+        if self.matmul_engine == "numpy":
+            if embeddings.shape[1] != search_vector.shape[0]:
+                self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vection[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
+                return np.asarray([], dtype=np.float32)
+            mul = np.asarray(np.matmul(embeddings, search_vector), dtype=np.float32)
+        else:
+            self.log.error("Matmul engine {self.matmul_engine} not implemented!")
+            return np.asarray([], dtype=np.float32)
+        return mul
+
+
 class EmbeddingEntry(TypedDict):
     filename: str
     text: str
@@ -45,7 +56,7 @@ class SearchResult(TypedDict):
     desc: str
     text: str
     chunk: str
-    yellow_liner: list[float] | None
+    yellow_liner: np.typing.NDArray[np.float32] | None
 
 
 class EmbeddingsSearch:
@@ -306,7 +317,7 @@ class EmbeddingsSearch:
             n = self.epsilon
         return float(m / n)
 
-    def yellow_line_it(self, text: str, search_embedding: numpy.typing.ArrayLike, context:int=16, context_steps:int=1) -> list[float]:
+    def yellow_line_it(self, text: str, search_embeddings: np.typing.NDArray[np.float32], context:int=16, context_steps:int=1) -> np.typing.NDArray[np.float32]:
         clr: list[str] = []
         for i in range(0, len(text), context_steps):
             i0 = i - context // 2
@@ -320,12 +331,13 @@ class EmbeddingsSearch:
             clr.append(text[i0:i1])
 
         embs = self.engine.embed(clr)
-
-        yellow: list[float] = []
-        for i in range(embs.shape[0]):
-            emb = embs[i,:]
-            val: float = np.dot(search_embedding, emb) / np.linalg.norm(emb)
-            yellow.append(val)
+        yellow = np.asarray(self.engine.matmul(embs, search_embeddings.transpose()), np.float32)
+        # yellow: list[float] = []
+        # for i in range(embs.shape[0]):
+        #     emb = embs[i,:]
+        #     # XXX matrix!
+        #     val: float = np.dot(search_embedding, emb) / np.linalg.norm(emb)
+        #     yellow.append(val)
         return yellow
 
     def search_embeddings(self, search_text: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0,
@@ -345,7 +357,7 @@ class EmbeddingsSearch:
         t0 = time.time()
 
         self.log.warning(f"emb_ten: {self.emb_ten.shape}, search_embs: {search_embeddings.shape}")
-        idx_vec: np.typing.ArrayLike = np.asarray(np.matmul(self.emb_ten, search_embeddings.transpose()), dtype=np.float32)
+        idx_vec: np.typing.ArrayLike = self.engine.matmul(self.emb_ten, search_embeddings.transpose())
         # arg_max = np.argmax(idx_vec)
         idx_list = cast(list[float], idx_vec.tolist())
         idx_idx = list(enumerate(idx_list))
@@ -369,15 +381,16 @@ class EmbeddingsSearch:
                         yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
                     else:
                         yellow_liner_weights = None
-                    result: SearchResult = {
-                        'cosine': idx_vec[arg_max_i][0],
-                        'desc': desc,
-                        'index': index,
-                        'text': entry['text'],
-                        'chunk': chunk.replace('\n',' '),
-                        'yellow_liner': yellow_liner_weights
-                        }
-                    results.append(result)
+                    if yellow_liner_weights is not None:
+                        result: SearchResult = {
+                            'cosine': idx_vec[arg_max_i][0],
+                            'desc': desc,
+                            'index': index,
+                            'text': entry['text'],
+                            'chunk': chunk.replace('\n',' '),
+                            'yellow_liner': yellow_liner_weights[:,0]
+                            }
+                        results.append(result)
         results = sorted(results, key=lambda x: x['cosine'], reverse=True)
         dt = time.time() - t0
         if verbose is True:
