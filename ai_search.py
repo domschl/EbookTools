@@ -267,6 +267,7 @@ class EmbeddingsSearch:
 
     def load_text_embeddings(self, normalize:bool = False) -> int:
         migrate:bool = False
+        skip_tables:bool = False
         emb_file = os.path.join(self.embeddings_path, f"{self.model}{self.version}_library_embeddings.npz")
         if os.path.exists(emb_file) is False:
             emb_file = os.path.join(self.embeddings_path, f"library_embeddings.npz")
@@ -286,6 +287,8 @@ class EmbeddingsSearch:
                 self.log.warning("NORMALIZED on LOAD! OBSOLETE CODE!")
             with open(desc_file, 'r') as f:
                 self.texts  = json.load(f)
+        else:
+            skip_tables = True
         count = len(self.texts)
         if self.emb_ten is not None:
             self.log.info(f"Embeddings loaded: texts: {len(self.texts)}, emb_ten: {self.emb_ten.shape}")
@@ -298,7 +301,7 @@ class EmbeddingsSearch:
         tpi = 0
         eti: int = self.texts[self.texts_ptr_list[tpi]]['emb_ten_idx']
         ets: int = self.texts[self.texts_ptr_list[tpi]]['emb_ten_size']
-        if self.emb_ten is not None:
+        if self.emb_ten is not None and skip_tables is False:
             self.emb_ten_idx_to_text_ptr = []
             for i in range(self.emb_ten.shape[0]):
                 if i<eti:
