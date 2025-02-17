@@ -22,7 +22,7 @@ class OllamaEmbeddings:
         murks_logger = logging.getLogger("httpx")
         murks_logger.setLevel(logging.ERROR)
 
-    def embed(self, text_chunks: list[str], description:str | None=None, normalize:bool=False) -> np.typing.NDArray[np.float32]:
+    def embed(self, text_chunks: list[str], description:str | None=None, normalize:bool=True) -> np.typing.NDArray[np.float32]:
         if description is not None:
             self.log.info(f"Generating embedding for {description}...")
         response = ollama.embed(model=self.model, input=text_chunks)
@@ -246,16 +246,14 @@ class EmbeddingsSearch:
             json.dump(self.texts, f)
         self.log.info(f"Info saved {emb_file} and {desc_file}")
 
-    def load_text_embeddings(self, normalize:bool = True) -> int:   ### REMOVE NORM!
+    def load_text_embeddings(self, normalize:bool = False) -> int:
         emb_file = os.path.join(self.embeddings_path, f"library_embeddings.npz")
         desc_file = os.path.join(self.embeddings_path, f"library_desc.json")
         if os.path.exists(emb_file):
             self.emb_ten = np.load(emb_file)['array']
             if normalize is True and self.emb_ten is not None:
                 self.emb_ten = self.emb_ten / np.linalg.norm(self.emb_ten, axis=0)
-                self.log.warning("NORMALIZED on LOAD! REMOVE THIS CODE!")
-            else:
-                self.log.warning("Normalize NOT REQUESTED!")
+                self.log.warning("NORMALIZED on LOAD! OBSOLETE CODE!")
             with open(desc_file, 'r') as f:
                 self.texts  = json.load(f)
         count = len(self.texts)
@@ -265,7 +263,8 @@ class EmbeddingsSearch:
             self.log.info(f"Embeddings loaded: texts: {len(self.texts)}")
         return count
                 
-    def gen_embeddings(self, library_name: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0, chunk_method:str = "cut",  save_every_sec: float | None=360):
+    def gen_embeddings(self, library_name: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0,
+                       chunk_method:str = "cut",  save_every_sec: float | None=360):
         lib_desc = '{' + library_name + '}'
         last_save = time.time()
         cnt: int = 0
@@ -290,7 +289,7 @@ class EmbeddingsSearch:
                 self.texts[desc]['emb_ten_idx'] = index
                 self.texts[desc]['emb_ten_size'] = len(text_chunks)
 
-                embeddings = self.engine.embed(text_chunks)
+                embeddings = self.engine.embed(text_chunks, normalize=True)
                 
                 if len(embeddings.shape)<2 or embeddings.shape[0] != len(text_chunks):
                     self.log.error(f"Assumption on numpy conversion failed, can't generate embeddings for {desc}, result: {embeddings.shape}, chunks: {len(text_chunks)}")
@@ -330,7 +329,7 @@ class EmbeddingsSearch:
                 i1 = len(text)
             clr.append(text[i0:i1])
 
-        embs = self.engine.embed(clr)
+        embs = self.engine.embed(clr, normalize=True)
         yellow = np.asarray(self.engine.matmul(embs, search_embeddings.transpose()), np.float32)
         # yellow: list[float] = []
         # for i in range(embs.shape[0]):
@@ -344,7 +343,7 @@ class EmbeddingsSearch:
                           chunk_method:str="cut", yellow_liner: bool=False, context:int=16, context_steps:int=1, max_results:int=10) -> list[SearchResult] | None:
 
         search_text_list = [search_text]
-        search_embeddings = self.engine.embed(search_text_list)
+        search_embeddings = self.engine.embed(search_text_list, normalize=True)
         
         if len(search_text) > av_chunk_size:
             self.log.warning(f"Search text is longer than av_chunk_size: {len(search_text)}")
