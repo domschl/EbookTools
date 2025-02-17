@@ -28,7 +28,7 @@ class OllamaEmbeddings:
         response = ollama.embed(model=self.model, input=text_chunks)
         embeddings: np.typing.NDArray[np.float32] = np.asarray(response["embeddings"], dtype=np.float32)
         if normalize is True:
-            embeddings = embeddings / np.linalg.norm(embeddings, axis=0)
+            embeddings = (embeddings.transpose() / np.linalg.norm(embeddings, axis=1)).transpose()
         return embeddings
 
     def matmul(self, embeddings:np.typing.NDArray[np.float32], search_vector:np.typing.NDArray[np.float32]) -> np.typing.NDArray[np.float32]:
@@ -252,7 +252,7 @@ class EmbeddingsSearch:
         if os.path.exists(emb_file):
             self.emb_ten = np.load(emb_file)['array']
             if normalize is True and self.emb_ten is not None:
-                self.emb_ten = self.emb_ten / np.linalg.norm(self.emb_ten, axis=0)
+                self.emb_ten = self.emb_ten / np.linalg.norm(self.emb_ten, axis=1)
                 self.log.warning("NORMALIZED on LOAD! OBSOLETE CODE!")
             with open(desc_file, 'r') as f:
                 self.texts  = json.load(f)
@@ -289,7 +289,7 @@ class EmbeddingsSearch:
                 self.texts[desc]['emb_ten_idx'] = index
                 self.texts[desc]['emb_ten_size'] = len(text_chunks)
 
-                embeddings = self.engine.embed(text_chunks, normalize=True)
+                embeddings = self.engine.embed(text_chunks, desc, normalize=True)
                 
                 if len(embeddings.shape)<2 or embeddings.shape[0] != len(text_chunks):
                     self.log.error(f"Assumption on numpy conversion failed, can't generate embeddings for {desc}, result: {embeddings.shape}, chunks: {len(text_chunks)}")
@@ -355,7 +355,6 @@ class EmbeddingsSearch:
             return None
         t0 = time.time()
 
-        self.log.warning(f"emb_ten: {self.emb_ten.shape}, search_embs: {search_embeddings.shape}")
         idx_vec: np.typing.ArrayLike = self.engine.matmul(self.emb_ten, search_embeddings.transpose())
         # arg_max = np.argmax(idx_vec)
         idx_list = cast(list[float], idx_vec.tolist())
