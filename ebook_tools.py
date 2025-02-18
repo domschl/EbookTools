@@ -390,9 +390,10 @@ if __name__ == "__main__":
             emb = EmbeddingsSearch(embeddings_path = book_text_lib_embeddings, model=model_config['model_name'])
             logger.info("Embeddings loaded, searching...")
         max_results = 10
-        context = 48
-        context_steps = 5
-        results: list[SearchResult] | None = emb.search_embeddings(search_text=search_spec, yellow_liner=True, context=context, context_steps=context_steps, max_results=max_results)
+        context = 32
+        context_steps = 4
+        yellow = True
+        results: list[SearchResult] | None = emb.search_embeddings(search_text=search_spec, yellow_liner=yellow, context=context, context_steps=context_steps, max_results=max_results)
         if results is not None and len(results) > 0:
             for i in range(len(results)):
                 result = results[i]
@@ -413,14 +414,13 @@ if __name__ == "__main__":
                         logger.error(f"Yellow-liner result has wrong shape: {ryel.shape}")
                         continue
                 else:
-                    logger.error("yellow-liner created None")
+                    print(results[i]['chunk'])
                 if y_min == None:
                      y_min = 0
                 if y_max == None:
                      y_max = 1
                 print("-----------------------------------------------")
-                print(f"cos: {result['cosine']}")
-                print(f"Document: {result['desc']}[{result['index']}], certainty: {result['cosine'] * 100.0:2.1f} %")
+                print(f"Document: {result['desc']}[{result['index']}], {result['cosine'] * 100.0:2.1f} %")
                 print("-----------------------------------------------")
                 # print(best_chunk)
                 # print(y_min, y_max)
