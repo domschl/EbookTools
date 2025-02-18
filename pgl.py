@@ -6,12 +6,19 @@ import re
 import threading
 import queue
 from dataclasses import dataclass
+from abc import abstractmethod
+from typing import Protocol, override
 
 import sdl2
 import sdl2.ext
 import sdl2.sdlttf
 
+@dataclass()
+class InputEvent:
+    cmd: str
+    msg: str
 
+        
 @dataclass()
 class Pad:
     screen_pos_x: int
@@ -28,51 +35,73 @@ class Pad:
     screen: list[str]
     schema: dict[str, int]
 
-@dataclass()
-class InputEvent:
-    cmd: str
-    msg: str
+
+class ReplIO(Protocol):
+    @abstractmethod
+    def __init__(self, que:queue.Queue[InputEvent]):
+        pass
+
+    @abstractmethod
+    def canvas_init(self, size_x:int =0, size_y:int=0) -> bool:
+        pass
+
+    @abstractmethod
+    def cursor_hide(self):
+        pass
+
+    @abstractmethod
+    def cursor_show(self, padIndex: int | None =None):
+        pass
+
+    @abstractmethod
+    def pad_create(self, buffer:list[str], height: int, width:int = 0, offset_y:int = 0, offset_x:int = 0, left_border:int=0, bottom_border:int=0, schema: dict[str, int] | None = None) -> int:
+        pass
+
+    @abstractmethod
+    def pad_get(self, padIndex: int) -> Pad | None:
+        pass
+    
+    @abstractmethod
+    def pad_display(self, pad_index:int, set_cursor:bool = True, update_from_buffer:bool=True):
+        pass
+
+    @abstractmethod
+    def pad_move(self, pad_id:int, dx:int | None = None, dy:int | None = None, x:int | None = None, y: int | None = None) -> bool:
+        pass
 
 
-class Repl():
-    def __init__(self, engine:str="TEXT"):
-        # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
-        self.log: logging.Logger = logging.getLogger("Repl")
-        valid_engines = ["TEXT", "SDL2"]
-        if engine not in valid_engines:
-            self.log.error(f"Unknown engine {engine}, use one of {valid_engines}")
-            exit(1)
-        self.engine:str = engine
+class TextReplIO(ReplIO):
+    def __init__(self, que:queue.Queue[InputEvent]):
+        self.log: logging.Logger = logging.getLogger("TextReplIO")
         self.default_schema: dict[str, int] = {
             'fg': 15,
             'bg': 243,
             'lb': 247,
             'bb': 55
             }
+        self.input_queue: queue.Queue[InputEvent] = que
         self.pads: list[Pad] = []
         self.cur_x: int
         self.cur_y: int
         self.input_loop_active:bool = False
         self.key_reader_active:bool = False
         self.cur_x, self.cur_y = self.get_cursor_pos()
+        self.key_queue:queue.Queue[bytearray] = queue.Queue()
+        self.key_reader_active = True
+        self.key_thread: threading.Thread = threading.Thread(target=self.key_reader, daemon=True)
+        self.key_thread.start()
+        self.input_loop_active = True
+        self.input_thread: threading.Thread = threading.Thread(target=self.input_loop, daemon=True)
+        self.input_thread.start()
 
-        self.input_translation_mode: str = "simple"
-        self.input_queue:queue.Queue[InputEvent] = queue.Queue()
-        if engine == "TEXT" or engine == "SDL2":
-            self.key_queue:queue.Queue[bytearray] = queue.Queue()
-            self.key_reader_active = True
-            self.key_thread: threading.Thread = threading.Thread(target=self.key_reader, daemon=True)
-            self.key_thread.start()
-            self.input_loop_active = True
-            self.input_thread: threading.Thread = threading.Thread(target=self.input_loop, daemon=True)
-            self.input_thread.start()
-        elif engine == "SDL2":
-            sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportAny]
-            sdl2.sdlttf.TTF_Init()  # pyright: ignore[reportUnknownMemberType]
+    @override
+    def pad_get(self, padIndex: int) -> Pad | None:
+        if padIndex >=0 and padIndex<len(self.pads):
+            return self.pads[padIndex]
         else:
-            self.log.error(f"State error {engine}")
-            exit(1)
-
+            self.log.error(f"Invalid padIndex: {padIndex}")
+            return None
+        
     def get_ansi_char(self) -> str | None:
         fd = sys.stdin.fileno()
         old_attr = termios.tcgetattr(fd)
@@ -111,86 +140,81 @@ class Repl():
                 continue
             self.key_queue.task_done()
             if len(inp) > 0:
-                if self.input_translation_mode == "simple":
-                    if esc_state is True:
-                        esc_code += chr(inp[0])
-                        if len(esc_code) == 2:
-                            if esc_code == "[A":
-                                tinp = InputEvent("up", "")
-                            elif esc_code == "[B":
-                                tinp = InputEvent("down", "")
-                            elif esc_code == "[C":
-                                tinp = InputEvent("right", "")
-                            elif esc_code == "[D":
-                                tinp = InputEvent("left", "")
-                            elif esc_code == "[F":
-                                tinp = InputEvent("end", "")
-                            elif esc_code == "[H":
-                                tinp = InputEvent("home", "")
-                            elif esc_code == "OP":
-                                tinp = InputEvent("F1", "")
-                            elif esc_code == "OQ":
-                                tinp = InputEvent("F2", "")
-                            elif esc_code == "OR":
-                                tinp = InputEvent("F3", "")
-                            elif esc_code == "OS":
-                                tinp = InputEvent("F4", "")
-                            elif esc_code[0] == "[" and esc_code[1] in "123456":
-                                term_char = '~'
-                            else:
-                                tinp = InputEvent("err", "ESC-"+esc_code)
-                            if tinp.cmd != "":
-                                self.input_queue.put_nowait(tinp)
-                                tinp = InputEvent("", "")
-                                esc_code = ""
-                                esc_state = False
-                        if term_char != '' and esc_code.endswith(term_char):
-                            if esc_code == "[5~":  # PgUp
-                                tinp = InputEvent("PgUp", "")
-                            elif esc_code == "[6~":
-                                tinp = InputEvent("PgDown", "")
-                            elif esc_code == "[5;2~":
-                                tinp = InputEvent("Start", "")
-                            elif esc_code == "[6;2~":
-                                tinp = InputEvent("End", "")
-                            else:
-                                tinp = InputEvent("EscSeq", esc_code)
+                if esc_state is True:
+                    esc_code += chr(inp[0])
+                    if len(esc_code) == 2:
+                        if esc_code == "[A":
+                            tinp = InputEvent("up", "")
+                        elif esc_code == "[B":
+                            tinp = InputEvent("down", "")
+                        elif esc_code == "[C":
+                            tinp = InputEvent("right", "")
+                        elif esc_code == "[D":
+                            tinp = InputEvent("left", "")
+                        elif esc_code == "[F":
+                            tinp = InputEvent("end", "")
+                        elif esc_code == "[H":
+                            tinp = InputEvent("home", "")
+                        elif esc_code == "OP":
+                            tinp = InputEvent("F1", "")
+                        elif esc_code == "OQ":
+                            tinp = InputEvent("F2", "")
+                        elif esc_code == "OR":
+                            tinp = InputEvent("F3", "")
+                        elif esc_code == "OS":
+                            tinp = InputEvent("F4", "")
+                        elif esc_code[0] == "[" and esc_code[1] in "123456":
+                            term_char = '~'
+                        else:
+                            tinp = InputEvent("err", "ESC-"+esc_code)
+                        if tinp.cmd != "":
                             self.input_queue.put_nowait(tinp)
                             tinp = InputEvent("", "")
                             esc_code = ""
                             esc_state = False
-                            term_char = ""
-                    else:
-                        if inp == bytearray([0x7f]):  # BSP
-                            tinp = InputEvent("bsp", "")
-                        elif inp == bytearray([27]):  # ESC
-                            esc_state = True
-                            continue
-                        elif inp == bytearray([0x05]):  # Ctrl-E
-                            tinp = InputEvent("end", "")
-                        elif inp == bytearray([0x0a]):
-                            tinp = InputEvent("nl", "")
-                        elif inp == bytearray([0x01]):  # ^A
-                            tinp = InputEvent("home", "")
-                        elif inp == bytearray([0x06]):  # ^F
-                            tinp = InputEvent("right", "")
-                        elif inp == bytearray([0x02]):  # ^B
-                            tinp = InputEvent("left", "")
-                        elif inp == bytearray([14]):  # ^N
-                            tinp = InputEvent("down", "")
-                        elif inp == bytearray([16]):  # ^P
-                            tinp = InputEvent("up", "")
-                        elif inp == bytearray([24]):  # ^X
-                            tinp = InputEvent("exit", "")
+                    if term_char != '' and esc_code.endswith(term_char):
+                        if esc_code == "[5~":  # PgUp
+                            tinp = InputEvent("PgUp", "")
+                        elif esc_code == "[6~":
+                            tinp = InputEvent("PgDown", "")
+                        elif esc_code == "[5;2~":
+                            tinp = InputEvent("Start", "")
+                        elif esc_code == "[6;2~":
+                            tinp = InputEvent("End", "")
                         else:
-                            tinp = InputEvent("char", inp.decode('utf-8'))
-                        # print(f"<Q:{tinp}>", end="")
-                        # _ = sys.stdout.flush()
+                            tinp = InputEvent("EscSeq", esc_code)
                         self.input_queue.put_nowait(tinp)
+                        tinp = InputEvent("", "")
+                        esc_code = ""
+                        esc_state = False
+                        term_char = ""
                 else:
-                    pass
-                # print(f"<QE: {inp}>")
-                # _ = sys.stdout.flush()
+                    if inp == bytearray([0x7f]):  # BSP
+                        tinp = InputEvent("bsp", "")
+                    elif inp == bytearray([27]):  # ESC
+                        esc_state = True
+                        continue
+                    elif inp == bytearray([0x05]):  # Ctrl-E
+                        tinp = InputEvent("end", "")
+                    elif inp == bytearray([0x0a]):
+                        tinp = InputEvent("nl", "")
+                    elif inp == bytearray([0x01]):  # ^A
+                        tinp = InputEvent("home", "")
+                    elif inp == bytearray([0x06]):  # ^F
+                        tinp = InputEvent("right", "")
+                    elif inp == bytearray([0x02]):  # ^B
+                        tinp = InputEvent("left", "")
+                    elif inp == bytearray([14]):  # ^N
+                        tinp = InputEvent("down", "")
+                    elif inp == bytearray([16]):  # ^P
+                        tinp = InputEvent("up", "")
+                    elif inp == bytearray([24]):  # ^X
+                        tinp = InputEvent("exit", "")
+                    else:
+                        tinp = InputEvent("char", inp.decode('utf-8'))
+                    # print(f"<Q:{tinp}>", end="")
+                    # _ = sys.stdout.flush()
+                    self.input_queue.put_nowait(tinp)
                     
         
     def get_cursor_pos(self) -> tuple[int, int]:
@@ -211,20 +235,22 @@ class Repl():
                 return (-1, -1)
         else:
             return (-1, -1)
-            
-    def hide_cursor(self):
-        print('\033[?25l', end="")
-        _ = sys.stdout.flush()
 
-    def show_cursor(self, padIndex: int | None =None):
-        if padIndex is None:
-            print('\033[?25h', end="")
-        else:
-            pad = self.pads[padIndex]
-            print(f"\033[{pad.screen_pos_y+pad.cur_y};{pad.screen_pos_x + pad.cur_x}H\033[?25h", end="")
-        _ = sys.stdout.flush()
-      
-    def print_at(self, msg: str, y:int, x:int, flush:bool = False, scroll:bool=False):
+    @override
+    def canvas_init(self, size_x:int =0, size_y:int=0) -> bool:
+        cols, rows = os.get_terminal_size()
+        if size_x == 0 or size_x > cols:
+            size_x = cols
+        if size_y == 0 or size_y > rows:
+            size_y = rows
+
+        if self.cur_y + size_y >= rows:
+            for _ in range(size_y - 1):
+                print()
+            self.cur_y -= size_y + self.cur_y - rows
+        return True
+
+    def canvas_print_at(self, msg: str, y:int, x:int, flush:bool = False, scroll:bool=False):
         cols, rows = os.get_terminal_size()
         if scroll is False:
             if x>=cols or y>=rows:
@@ -243,27 +269,22 @@ class Repl():
         if flush is True:
             _ = sys.stdout.flush()
 
-    def init_screen(self, size_x:int =0, size_y:int=0) -> bool:
-        if self.engine == "TEXT":
-            cols, rows = os.get_terminal_size()
-            if size_x == 0 or size_x > cols:
-                size_x = cols
-            if size_y == 0 or size_y > rows:
-                size_y = rows
-            
-            if self.cur_y + size_y >= rows:
-                for _ in range(size_y - 1):
-                    print()
-                self.cur_y -= size_y + self.cur_y - rows
-            return True
-        elif self.engine == "SDL2":
-            self.log.error("NOT IMPLEMENTED")
-            return False
-        else:
-            self.log.error(f"Bad engine {self.engine} at init")
-        return False
+    @override
+    def cursor_hide(self):
+        print('\033[?25l', end="")
+        _ = sys.stdout.flush()
 
-    def create_pad(self, buffer:list[str], height: int, width:int = 0, offset_y:int = 0, offset_x:int = 0, left_border:int=0, bottom_border:int=0, schema: dict[str, int] | None = None) -> int:
+    @override
+    def cursor_show(self, padIndex: int | None =None):
+        if padIndex is None:
+            print('\033[?25h', end="")
+        else:
+            pad = self.pads[padIndex]
+            print(f"\033[{pad.screen_pos_y+pad.cur_y};{pad.screen_pos_x + pad.cur_x}H\033[?25h", end="")
+        _ = sys.stdout.flush()
+
+    @override
+    def pad_create(self, buffer:list[str], height: int, width:int = 0, offset_y:int = 0, offset_x:int = 0, left_border:int=0, bottom_border:int=0, schema: dict[str, int] | None = None) -> int:
         if schema is None:
             schema = self.default_schema
         pad: Pad = Pad(
@@ -283,7 +304,7 @@ class Repl():
             )
         self.pads.append(pad)
         pad_index = len(self.pads)-1
-        self.display_screen(pad_index)
+        self.pad_display(pad_index)
         return pad_index
     
     def pad_print_at(self, pad_index:int, msg: str, y:int, x:int, flush:bool = False, scroll:bool=False, border:bool=False):
@@ -291,11 +312,12 @@ class Repl():
             return
         pad = self.pads[pad_index]
         if border is False:
-            self.print_at(msg, y+pad.screen_pos_y, x+pad.screen_pos_x, flush=flush, scroll=scroll)
+            self.canvas_print_at(msg, y+pad.screen_pos_y, x+pad.screen_pos_x, flush=flush, scroll=scroll)
         else:
-            self.print_at(msg, y+pad.screen_pos_y, x+pad.screen_pos_x-pad.left_border, flush=flush, scroll=scroll)
+            self.canvas_print_at(msg, y+pad.screen_pos_y, x+pad.screen_pos_x-pad.left_border, flush=flush, scroll=scroll)
 
-    def display_screen(self, pad_index:int, set_cursor:bool = True, update_from_buffer:bool=True):
+    @override
+    def pad_display(self, pad_index:int, set_cursor:bool = True, update_from_buffer:bool=True):
         if pad_index >= len(self.pads):
             return
         pad = self.pads[pad_index]
@@ -327,6 +349,7 @@ class Repl():
             self.pad_print_at(pad_index, "", pad.cur_y, pad.cur_x)
         _ = sys.stdout.flush()
 
+    @override
     def pad_move(self, pad_id:int, dx:int | None = None, dy:int | None = None, x:int | None = None, y: int | None = None) -> bool:
         changed: bool = False
         if pad_id>= len(self.pads):
@@ -453,6 +476,56 @@ class Repl():
             exit(1)
         return changed
 
+
+class Sdl2ReplIO(ReplIO):
+    def __init__(self, que:queue.Queue[InputEvent]):
+        sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportAny]
+        sdl2.sdlttf.TTF_Init()  # pyright: ignore[reportUnknownMemberType]
+
+    @override
+    def canvas_init(self, size_x:int =0, size_y:int=0) -> bool:
+        return False
+
+    @override
+    def pad_display(self, pad_index:int, set_cursor:bool = True, update_from_buffer:bool=True):
+        pass
+
+    @override
+    def cursor_show(self, padIndex: int | None = None):
+        pass
+
+    @override
+    def cursor_hide(self):
+        pass
+
+    @override
+    def pad_create(self, buffer:list[str], height: int, width:int = 0, offset_y:int = 0, offset_x:int = 0, left_border:int=0, bottom_border:int=0, schema: dict[str, int] | None = None) -> int:
+        return 0
+
+    @override
+    def pad_get(self, padIndex: int) -> Pad | None:
+        return None
+    
+    @override
+    def pad_move(self, pad_id:int, dx:int | None = None, dy:int | None = None, x:int | None = None, y: int | None = None) -> bool:
+        return False
+
+
+class Repl():
+    def __init__(self, engine:str="TEXT"):
+        # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
+        self.log: logging.Logger = logging.getLogger("Repl")
+        valid_engines = ["TEXT", "SDL2"]
+        if engine not in valid_engines:
+            self.log.error(f"Unknown engine {engine}, use one of {valid_engines}")
+            exit(1)
+        self.engine:str = engine
+        self.input_queue:queue.Queue[InputEvent] = queue.Queue()
+        if self.engine == "TEXT":
+            self.repl: ReplIO = TextReplIO(self.input_queue)
+        else:
+            self.repl = Sdl2ReplIO(self.input_queue)
+ 
     def create_editor(self, buffer: list[str], height: int, width:int = 0, offset_y:int =0, offset_x:int =0, schema: dict[str, int] | None=None, line_no:bool=False, status_line:bool=False, debug:bool=False) -> int:
         left_border:int = 0
         bottom_border:int = 0
@@ -460,11 +533,11 @@ class Repl():
             left_border = 6
         if status_line is True:
             bottom_border = 1
-        pad_id = self.create_pad(buffer, height, width, offset_y, offset_x, left_border, bottom_border, schema)
-        self.show_cursor(pad_id)
+        pad_id = self.repl.pad_create(buffer, height, width, offset_y, offset_x, left_border, bottom_border, schema)
+        self.repl.cursor_show(pad_id)
         esc: bool = False
-        pad = self.pads[pad_id]
-        while esc is False:
+        pad = self.repl.pad_get(pad_id)
+        while esc is False and pad is not None:
             try:
                 tinp:InputEvent | None = self.input_queue.get(timeout=0.02)
             except queue.Empty:
@@ -477,18 +550,18 @@ class Repl():
                 if tinp is not None:
                     if tinp.cmd == "bsp":
                         if pad.cur_x + pad.buf_x > 0:
-                            _ = self.pad_move(pad_id, dx = -1)
+                            _ = self.repl.pad_move(pad_id, dx = -1)
                             pad.buffer[pad.buf_y+pad.cur_y] = pad.buffer[pad.buf_y+pad.cur_y][:pad.buf_x+pad.cur_x] + pad.buffer[pad.buf_y+pad.cur_y][pad.buf_x+pad.cur_x+1:]
                         else:
                             if pad.cur_y + pad.buf_y > 0:
                                 cur_idx = pad.cur_y+pad.buf_y
                                 cur_line = pad.buffer[cur_idx]
-                                _ = self.pad_move(pad_id, dy = -1)
-                                _ = self.pad_move(pad_id, x = -1)
+                                _ = self.repl.pad_move(pad_id, dy = -1)
+                                _ = self.repl.pad_move(pad_id, x = -1)
                                 cur_idx_new = pad.cur_y+pad.buf_y
                                 pad.buffer[cur_idx_new] += cur_line
                                 del pad.buffer[cur_idx]
-                        self.display_screen(pad_id)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == 'exit':
                         esc = True
                     elif tinp.cmd == "nl":
@@ -507,43 +580,43 @@ class Repl():
                             pad.buffer.append(right)
                         else:
                             pad.buffer.insert(cur_ind+1, right)
-                        _ = self.pad_move(pad_id, dy=1, x=0)
-                        self.display_screen(pad_id)
+                        _ = self.repl.pad_move(pad_id, dy=1, x=0)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == "up":
-                        _ = self.pad_move(pad_id, dy = -1)
-                        self.display_screen(pad_id)
+                        _ = self.repl.pad_move(pad_id, dy = -1)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == "down":
-                        _ = self.pad_move(pad_id, dy = 1)
-                        self.display_screen(pad_id)
+                        _ = self.repl.pad_move(pad_id, dy = 1)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == "left":
-                        _ = self.pad_move(pad_id, dx = -1)
-                        self.display_screen(pad_id)
+                        _ = self.repl.pad_move(pad_id, dx = -1)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == "right":
-                        _ = self.pad_move(pad_id, dx = 1)
-                        self.display_screen(pad_id)
+                        _ = self.repl.pad_move(pad_id, dx = 1)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == "home":
-                        _ = self.pad_move(pad_id, x=0)
-                        self.display_screen(pad_id)
+                        _ = self.repl.pad_move(pad_id, x=0)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == "end":
-                        _ = self.pad_move(pad_id, x= -1)
-                        self.display_screen(pad_id)
+                        _ = self.repl.pad_move(pad_id, x= -1)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == "PgUp":
-                        _ = self.pad_move(pad_id, dy = -pad.height)
-                        self.display_screen(pad_id)
+                        _ = self.repl.pad_move(pad_id, dy = -pad.height)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == "PgDown":
-                        _ = self.pad_move(pad_id, dy = pad.height)
-                        self.display_screen(pad_id)
+                        _ = self.repl.pad_move(pad_id, dy = pad.height)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == "Start":
-                        _ = self.pad_move(pad_id, x=0, y=0)
-                        self.display_screen(pad_id)
+                        _ = self.repl.pad_move(pad_id, x=0, y=0)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == "End":
                         llen = len(pad.buffer) - 1
                         y = llen + pad.height
                         if y > llen:
                             y = llen
-                        _ = self.pad_move(pad_id, y=y)
-                        _ = self.pad_move(pad_id, x= -1)
-                        self.display_screen(pad_id)
+                        _ = self.repl.pad_move(pad_id, y=y)
+                        _ = self.repl.pad_move(pad_id, x= -1)
+                        self.repl.pad_display(pad_id)
                     elif tinp.cmd == "err":
                         print()
                         print(tinp.msg)
@@ -555,20 +628,20 @@ class Repl():
                             left = cur_line[:pad.buf_x+pad.cur_x]
                             right = cur_line[pad.buf_x+pad.cur_x:]
                             pad.buffer[cur_ind] = left + tinp.msg + right
-                            _ = self.pad_move(pad_id, dx = 1)
-                        self.display_screen(pad_id)
+                            _ = self.repl.pad_move(pad_id, dx = 1)
+                        self.repl.pad_display(pad_id)
                     else:
                         print(f"Bad state: cmd={tinp.cmd}, msg={tinp.msg}")
                         exit(1)
                     self.input_queue.task_done()
                 
-        self.display_screen(pad_id, False)
+        self.repl.pad_display(pad_id, False)
         return pad_id
 
 
 if __name__ == "__main__":
     repl = Repl(engine="TEXT")
-    if repl.init_screen(40,100) is False:
+    if repl.repl.canvas_init(40,100) is False:
         repl.log.error("Init failed.")
         exit(1)
     buffer: list[str] = ["That", "is", "the", "initial", "long", "text"]
