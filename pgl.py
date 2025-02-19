@@ -34,7 +34,7 @@ class Pad:
     buf_x: int
     buf_y: int
     screen: list[str]
-    schema: dict[str, int]
+    schema: dict[str, list[int]]
 
 
 class ReplIO(Protocol):
@@ -81,6 +81,10 @@ class ReplIO(Protocol):
     @abstractmethod
     def event_loop_tick(self):
         pass
+
+    @abstractmethod
+    def color_set(self, fg:list[int], bg:list[int] | None):
+        pass
     
 
 class TextReplIO(ReplIO):
@@ -92,6 +96,8 @@ class TextReplIO(ReplIO):
         self.cols: int
         self.rows: int
         self.cols, self.rows = self.canvas_update_size()
+        self.fg_color: list[int] = [0xff, 0xff, 0xff, 0xff]
+        self.bg_color: list[int] = [0, 0, 0, 0xff]
 
         self.input_loop_active:bool = False
         self.key_reader_active:bool = False
@@ -132,6 +138,12 @@ class TextReplIO(ReplIO):
             if isinstance(inp, str):
                 bytes = bytearray(inp, encoding='UTF-8')
                 self.key_queue.put_nowait(bytes)
+
+    @override
+    def color_set(self, fg:list[int], bg:list[int] | None):
+        self.fg_color = fg
+        if bg is not None:
+            self.bg_color = bg
 
     def input_loop(self):
         esc_state: bool = False
@@ -272,6 +284,8 @@ class TextReplIO(ReplIO):
     @override
     def canvas_print_at(self, msg: str, y:int, x:int, flush:bool = False, scroll:bool=False):
         cols, rows = os.get_terminal_size()
+        print(f"\033[38;2;{self.fg_color[0]};{self.fg_color[1]};{self.fg_color[2]}m")  # Set foreground color as RGB.
+        print(f"\033[48;2;{self.bg_color[0]};{self.bg_color[1]};{self.bg_color[2]}m")  # Set background color as RGB.
         if scroll is False:
             if x>=cols or y>=rows:
                 if flush is True:
@@ -313,12 +327,18 @@ class Sdl2ReplIO(ReplIO):
         self.input_queue: queue.Queue[InputEvent] = que
         self.cur_x_offset: int = 0
         self.cur_y_offset: int = 0
+        self.cur_pos_x: int = 0
+        self.cur_pos_y: int = 0
+        self.cur_active: bool = True
+        self.fg_color: list[int] = [0xff, 0xff, 0xff, 0xff]
+        self.bg_color: list[int] = [0, 0, 0, 0xff]
+
         sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportAny]
         sdl2.sdlttf.TTF_Init()  # pyright: ignore[reportUnknownMemberType]
         self.event_loop_active: bool = True
         WINDOW_WIDTH, WINDOW_HEIGHT = 800, 600
         window = sdl2.ext.Window("SDL2 Text Example", size=(WINDOW_WIDTH, WINDOW_HEIGHT),
-                                 flags = (sdl2.SDL_WINDOW_ALLOW_HIGHDPI | sdl2.SDL_WINDOW_METAL | sdl2.SDL_WINDOW_RESIZABLE)) #  | sdl2.SDL_RENDERER_ACCELERATED))
+                                 flags = (sdl2.SDL_WINDOW_ALLOW_HIGHDPI |  sdl2.SDL_RENDERER_ACCELERATED)) # sdl2.SDL_WINDOW_RESIZABLE)) #  | sdl2.SDL_WINDOW_METAL |
         window.show()  # pyright: ignore[reportUnknownMemberType]
         self.renderer = sdl2.ext.Renderer(window)
         if self.renderer is None:
@@ -346,17 +366,31 @@ class Sdl2ReplIO(ReplIO):
         # sdl2.ext.RenderSetScale(self.renderer,2,2)
         self.font_mag:int = 2
         self.dpi:int = 144
-        font_size = 6 * self.font_mag
+        font_size = 8 * self.font_mag
         self.font = sdl2.sdlttf.TTF_OpenFontDPI(font_path.encode('utf-8'), font_size, self.dpi, self.dpi)  # pyright: ignore[reportUnknownMemberType, reportUnannotatedClassAttribute]
         if self.font is None:
             self.log.error(f"No font from {font_path}")
         sdl2.sdlttf.TTF_SetFontHinting(self.font, sdl2.sdlttf.TTF_HINTING_LIGHT_SUBPIXEL)
+        rect = self.render_text("a", 0, 0)
+        if rect is not None:
+            self.char_width: int = rect.w
+            self.char_height: int = rect.h
+            print(f"Char-sizes: {self.char_width}, {self.char_height}")
+        else:
+            self.log.error("Cannot determine character dimensions!")
+        self.line_spacing_extra:int = 0
 
     @override
     def exit(self):
         sdl2.sdlttf.TTF_CloseFont(self.font)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         sdl2.sdlttf.TTF_Quit()  # pyright: ignore[reportUnknownMemberType]
         sdl2.SDL_Quit()  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+
+    @override
+    def color_set(self, fg:list[int], bg:list[int] | None):
+        self.fg_color = fg
+        if bg is not None:
+            self.bg_color = bg
 
     @override
     def canvas_init(self, size_x:int =0, size_y:int=0) -> bool:
@@ -366,8 +400,8 @@ class Sdl2ReplIO(ReplIO):
     def render_text(self, text, x, y):
         if text == "":
             return
-        color_fg = sdl2.SDL_Color(255, 255, 255)
-        color_bg = sdl2.SDL_Color(10,10,10)
+        color_fg = sdl2.SDL_Color(self.fg_color[0], self.fg_color[1], self.fg_color[2])
+        color_bg = sdl2.SDL_Color(self.bg_color[0], self.bg_color[1], self.bg_color[2])
         
         # Surface = sdl2.sdlttf.TTF_RenderUTF8_Solid(self.font, text.encode(), color)
         surface = sdl2.sdlttf.TTF_RenderUTF8_LCD(self.font, text.encode(), color_fg, color_bg)
@@ -380,20 +414,60 @@ class Sdl2ReplIO(ReplIO):
         sdl2.SDL_FreeSurface(surface)
         sdl2.SDL_RenderCopy(self.renderer.sdlrenderer, texture, None, rect)
         sdl2.SDL_DestroyTexture(texture)
+        return rect
 
     @override
     def canvas_print_at(self, msg: str, y:int, x:int, flush:bool = False, scroll:bool=False):
-        self.render_text(msg, x*8, y*12)
+        self.render_text(msg, x*self.char_width, y*(self.char_height + self.line_spacing_extra))
+        self.cur_pos_x = x + len(msg)
+        self.cur_pos_y = y
         
     @override
     def event_loop_tick(self):
         events = sdl2.ext.get_events()
         for event in events:
             if event.type == sdl2.SDL_QUIT:
-                msg = InputEvent("quit", "")
+                msg = InputEvent("exit", "")
                 self.input_queue.put_nowait(msg)
-                break
-        self.renderer.present()
+                continue
+            if event.type == sdl2.SDL_KEYDOWN:
+                key_sym= event.key.keysym.sym
+                key_code = event.key.keysym.scancode
+                key_mod = event.key.keysym.mod
+                
+                print(f"{hex(key_sym)} {key_sym} {key_code} {key_mod}")
+                if key_code == 82: # up
+                    msg = InputEvent("up", "")
+                    self.input_queue.put_nowait(msg)
+                    continue
+                if key_code == 81: # down
+                    msg = InputEvent("down", "")
+                    self.input_queue.put_nowait(msg)
+                    continue
+                if key_code == 80:  # left
+                    msg = InputEvent("left", "")
+                    self.input_queue.put_nowait(msg)
+                    continue
+                if key_code == 79: # up
+                    msg = InputEvent("right", "")
+                    self.input_queue.put_nowait(msg)
+                    continue
+                if key_sym == 8:
+                    msg = InputEvent("bsp", "")
+                    self.input_queue.put_nowait(msg)
+                    continue
+                if key_sym == 13:
+                    msg = InputEvent("nl", "")
+                    self.input_queue.put_nowait(msg)
+                    continue
+                continue
+            if event.type == sdl2.SDL_TEXTINPUT:
+                text_char = event.text.text.decode('utf-8')
+                text_type = event.text.type
+                msg = InputEvent("char", text_char)
+                self.input_queue.put_nowait(msg)
+                continue
+        #self.renderer.present()
 
     @override
     def canvas_render_start(self):
@@ -402,6 +476,9 @@ class Sdl2ReplIO(ReplIO):
 
     @override
     def canvas_render_show(self):
+        if self.cur_active is True:
+            sdl2.SDL_SetRenderDrawColor(self.renderer.sdlrenderer,self.fg_color[0],self.fg_color[1],self.fg_color[2],self.fg_color[3])
+            sdl2.SDL_RenderDrawLine(self.renderer.sdlrenderer, self.cur_pos_x * self.char_width, self.cur_pos_y * self.char_height, self.cur_pos_x * self.char_width, (self.cur_pos_y + 1) * self.char_height)
         self.renderer.present()
         return
 
@@ -411,10 +488,12 @@ class Sdl2ReplIO(ReplIO):
     
     @override
     def cursor_show(self):
+        self.cur_active = True
         return
 
     @override
     def cursor_hide(self):
+        self.cur_active = False
         pass
 
     @override
@@ -428,12 +507,13 @@ class Repl():
         # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
         self.log: logging.Logger = logging.getLogger("Repl")
         valid_engines = ["TEXT", "SDL2"]
-        self.default_schema: dict[str, int] = {
-            'fg': 15,
-            'bg': 243,
-            'lb': 247,
-            'bb': 55
+        self.default_schema: dict[str, list[int]] = {
+            'fg': [240,240,240,0xff],
+            'bg': [15,15,15,0xff],
+            'lb': [0,32,120,0xff],
+            'bb': [20,20,160,0xff],
             }
+        self.schema: dict[str, list[int]] = self.default_schema
         self.editor_esc: bool = False
         self.pads: list[Pad] = []
         if engine not in valid_engines:
@@ -455,9 +535,9 @@ class Repl():
         else:
             self.repl.canvas_print_at(msg, y+pad.screen_pos_y, x+pad.screen_pos_x-pad.left_border, flush=flush, scroll=scroll)
 
-    def pad_create(self, buffer:list[str], height: int, width:int = 0, offset_y:int = 0, offset_x:int = 0, left_border:int=0, bottom_border:int=0, schema: dict[str, int] | None = None) -> int:
+    def pad_create(self, buffer:list[str], height: int, width:int = 0, offset_y:int = 0, offset_x:int = 0, left_border:int=0, bottom_border:int=0, schema: dict[str, list[int]] | None = None) -> int:
         if schema is None:
-            schema = self.default_schema
+            self.schema = self.default_schema
         cur_x_offset, cur_y_offset = self.repl.cursor_start_offset_get()
         pad: Pad = Pad(
             screen_pos_x = cur_x_offset + offset_x + left_border,
@@ -492,7 +572,8 @@ class Repl():
         pad = self.pads[pad_index]
 
         self.repl.canvas_render_start()
-        
+
+        self.repl.color_set(self.schema['fg'], self.schema['bg'])
         if update_from_buffer is True:
             for i in range(pad.height):
                 if i+pad.buf_y < len(pad.buffer):
@@ -500,16 +581,14 @@ class Repl():
                     pad.screen[i] += ' ' * (pad.width - len(pad.screen[i]))
                 else:
                     pad.screen[i] = ' ' * pad.width
-        print(f"\033[48;5;{pad.schema['bg']}m", end="")
-        print(f"\033[38;5;{pad.schema['fg']}m", end="")
         for i in range(pad.height):
             self.pad_print_at(pad_index, pad.screen[i], i, 0)
         if pad.left_border > 0:
-            print(f"\033[48;5;{pad.schema['lb']}m", end="")
+            self.repl.color_set(self.schema['fg'], self.schema['lb'])
             for i in range(pad.height):
                 self.pad_print_at(pad_index, f"  {i+pad.buf_y:3d} ", i, 0, border=True)
         if pad.bottom_border > 0:
-            print(f"\033[48;5;{pad.schema['bb']}m", end="")
+            self.repl.color_set(self.schema['fg'], self.schema['bb'])
             for i in range(pad.height, pad.height+pad.bottom_border):
                 status_msg = ' ' * pad.left_border + f"Doms editor ({pad.cur_y+pad.buf_y},{pad.cur_x+pad.buf_x})"
                 gl = pad.left_border + pad.width
@@ -646,7 +725,7 @@ class Repl():
             exit(1)
         return changed
 
-    def create_editor(self, buffer: list[str], height: int, width:int = 0, offset_y:int =0, offset_x:int =0, schema: dict[str, int] | None=None, line_no:bool=False, status_line:bool=False, debug:bool=False) -> int:
+    def create_editor(self, buffer: list[str], height: int, width:int = 0, offset_y:int =0, offset_x:int =0, schema: dict[str, list[int]] | None=None, line_no:bool=False, status_line:bool=False, debug:bool=False) -> int:
         left_border:int = 0
         bottom_border:int = 0
         if line_no is True:
