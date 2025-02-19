@@ -12,6 +12,7 @@ from typing import Protocol, override
 import sdl2
 import sdl2.ext
 import sdl2.sdlttf
+import ctypes
 
 @dataclass()
 class InputEvent:
@@ -41,6 +42,10 @@ class ReplIO(Protocol):
     def __init__(self, que:queue.Queue[InputEvent]):
         pass
 
+    @abstractmethod
+    def exit(self):
+        pass
+    
     @abstractmethod
     def canvas_init(self, size_x:int =0, size_y:int=0) -> bool:
         pass
@@ -94,6 +99,11 @@ class TextReplIO(ReplIO):
         self.input_thread: threading.Thread = threading.Thread(target=self.input_loop, daemon=True)
         self.input_thread.start()
 
+    @override
+    def exit(self):
+        self.key_reader_active = False
+        self.input_loop_active = False
+        
     @override
     def pad_get(self, padIndex: int) -> Pad | None:
         if padIndex >=0 and padIndex<len(self.pads):
@@ -479,16 +489,100 @@ class TextReplIO(ReplIO):
 
 class Sdl2ReplIO(ReplIO):
     def __init__(self, que:queue.Queue[InputEvent]):
+        self.log: logging.Logger = logging.getLogger("TextReplIO")
+        self.input_queue: queue.Queue[InputEvent] = que
+        self.pads: list[Pad] = []
+        self.editor_esc: bool = False
+        self.default_schema: dict[str, int] = {
+            'fg': 15,
+            'bg': 243,
+            'lb': 247,
+            'bb': 55
+            }
+        self.cur_x: int = 0
+        self.cur_y: int = 0
         sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportAny]
         sdl2.sdlttf.TTF_Init()  # pyright: ignore[reportUnknownMemberType]
+        self.event_loop_active: bool = True
+        WINDOW_WIDTH, WINDOW_HEIGHT = 800, 600
+        window = sdl2.ext.Window("SDL2 Text Example", size=(WINDOW_WIDTH, WINDOW_HEIGHT),
+                                 flags = (sdl2.SDL_WINDOW_ALLOW_HIGHDPI | sdl2.SDL_WINDOW_METAL | sdl2.SDL_WINDOW_RESIZABLE)) #  | sdl2.SDL_RENDERER_ACCELERATED))
+        window.show()  # pyright: ignore[reportUnknownMemberType]
+        self.renderer = sdl2.ext.Renderer(window)
+        if self.renderer is None:
+            self.log.error("No renderer!")
+
+        rw: ctypes.c_int = ctypes.c_int(0)
+        rh: ctypes.c_int = ctypes.c_int(0)
+        #prw = ctypes.POINTER(ctypes.c_int(rw))
+        #prh: ctypes.POINTER(ctypes.c_int)
+        sdl2.SDL_GetRendererOutputSize(self.renderer.sdlrenderer, rw, rh);
+        if rw != WINDOW_WIDTH:
+            widthScale = rw.value / WINDOW_WIDTH
+            heightScale = rh.value / WINDOW_HEIGHT
+
+            if widthScale != heightScale:
+                self.log.warning("WARNING: width scale != height scale")
+            else:
+                print(f"Scale: {widthScale}")
+
+            sdl2.SDL_RenderSetScale(self.renderer.sdlrenderer, widthScale, heightScale);
+            
+        font_path = "./Resources/IosevkaTerm-Regular.ttf"
+        if os.path.exists(font_path) is False:
+            self.log.error(f"Font {font_path} does not exist")
+        # sdl2.ext.RenderSetScale(self.renderer,2,2)
+        self.font_mag:int = 2
+        self.dpi:int = 200
+        font_size = 6 * self.font_mag
+        self.font = sdl2.sdlttf.TTF_OpenFontDPI(font_path.encode('utf-8'), font_size, self.dpi, self.dpi)  # pyright: ignore[reportUnknownMemberType, reportUnannotatedClassAttribute]
+        if self.font is None:
+            self.log.error(f"No font from {font_path}")
+        sdl2.sdlttf.TTF_SetFontHinting(self.font, sdl2.sdlttf.TTF_HINTING_LIGHT_SUBPIXEL)
+
+    @override
+    def exit(self):
+        sdl2.sdlttf.TTF_CloseFont(self.font)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        sdl2.sdlttf.TTF_Quit()  # pyright: ignore[reportUnknownMemberType]
+        sdl2.SDL_Quit()  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
 
     @override
     def canvas_init(self, size_x:int =0, size_y:int=0) -> bool:
-        return False
+        return True
 
     @override
     def pad_display(self, pad_index:int, set_cursor:bool = True, update_from_buffer:bool=True):
-        pass
+        self.event_loop_tick()
+    
+        # Function to render text
+    def render_text(self, text, x, y):
+        color = sdl2.SDL_Color(255, 255, 255)
+        surface = sdl2.sdlttf.TTF_RenderUTF8_Solid(self.font, text.encode(), color)
+        if surface is None:
+            self.log.error("Non-surface")
+        texture = sdl2.SDL_CreateTextureFromSurface(self.renderer.sdlrenderer, surface)
+        if texture is None:
+            self.log.error("Non-texture")        
+        rect = sdl2.SDL_Rect(x, y, surface.contents.w // self.font_mag, surface.contents.h // self.font_mag)
+        sdl2.SDL_FreeSurface(surface)
+        sdl2.SDL_RenderCopy(self.renderer.sdlrenderer, texture, None, rect)
+        sdl2.SDL_DestroyTexture(texture)
+
+    def event_loop_tick(self):
+        events = sdl2.ext.get_events()
+        for event in events:
+            if event.type == sdl2.SDL_QUIT:
+                self.editor_esc = True
+                break
+
+        self.renderer.clear()
+
+        # Render lines of text
+        self.render_text("Hello, SDL2!", 50, 50)
+        self.render_text("This is a multi-line", 50, 100)
+        self.render_text("text example.", 50, 150)
+
+        self.renderer.present()
 
     @override
     def cursor_show(self, padIndex: int | None = None):
@@ -500,11 +594,34 @@ class Sdl2ReplIO(ReplIO):
 
     @override
     def pad_create(self, buffer:list[str], height: int, width:int = 0, offset_y:int = 0, offset_x:int = 0, left_border:int=0, bottom_border:int=0, schema: dict[str, int] | None = None) -> int:
-        return 0
+        if schema is None:
+            schema = self.default_schema
+        pad: Pad = Pad(
+            screen_pos_x = self.cur_x + offset_x + left_border,
+            screen_pos_y = self.cur_y + offset_y,
+            width = width-left_border,
+            height = height-bottom_border,
+            left_border = left_border,
+            bottom_border = bottom_border,
+            cur_x = 0,
+            cur_y = 0,
+            schema = schema,
+            screen = [' ' * width] * height,
+            buffer = buffer,
+            buf_x = 0,
+            buf_y = 0
+            )
+        
+        self.pads.append(pad)
+        return len(self.pads) - 1
 
     @override
     def pad_get(self, padIndex: int) -> Pad | None:
-        return None
+        if padIndex >=0 and padIndex<len(self.pads):
+            return self.pads[padIndex]
+        else:
+            self.log.error(f"Invalid padIndex: {padIndex}")
+            return None
     
     @override
     def pad_move(self, pad_id:int, dx:int | None = None, dy:int | None = None, x:int | None = None, y: int | None = None) -> bool:
@@ -535,13 +652,16 @@ class Repl():
             bottom_border = 1
         pad_id = self.repl.pad_create(buffer, height, width, offset_y, offset_x, left_border, bottom_border, schema)
         self.repl.cursor_show(pad_id)
-        esc: bool = False
+        self.repl.editor_esc = False
         pad = self.repl.pad_get(pad_id)
-        while esc is False and pad is not None:
+        print("Starting editor loop")
+        while self.repl.editor_esc is False and pad is not None:
             try:
                 tinp:InputEvent | None = self.input_queue.get(timeout=0.02)
             except queue.Empty:
                 tinp = None
+                self.repl.pad_display(pad_id)
+                continue
             if debug is True and tinp is not None:
                 hex_msg = f"{bytearray(tinp.msg, encoding='utf-8')}"
                 print(f"[{tinp.cmd},{tinp.msg},{hex_msg}]")
@@ -563,7 +683,7 @@ class Repl():
                                 del pad.buffer[cur_idx]
                         self.repl.pad_display(pad_id)
                     elif tinp.cmd == 'exit':
-                        esc = True
+                        self.repl.editor_esc = True
                     elif tinp.cmd == "nl":
                         cur_ind = pad.cur_y+pad.buf_y
                         cur_pos = pad.cur_x + pad.buf_x
@@ -636,15 +756,17 @@ class Repl():
                     self.input_queue.task_done()
                 
         self.repl.pad_display(pad_id, False)
+        print("Exit edit-loop")
         return pad_id
 
 
 if __name__ == "__main__":
-    repl = Repl(engine="TEXT")
-    if repl.repl.canvas_init(40,100) is False:
+    # repl = Repl(engine="TEXT")
+    repl = Repl(engine="SDL2")
+    if repl.repl.canvas_init(10,60) is False:
         repl.log.error("Init failed.")
         exit(1)
     buffer: list[str] = ["That", "is", "the", "initial", "long", "text"]
-    id = repl.create_editor(buffer, 40,100, 1, 3, None, True, True)
-    # print()
-    # print(buffer)
+    id = repl.create_editor(buffer, 10,60, 1, 3, None, True, True)
+    print("Exit")
+    repl.repl.exit()
