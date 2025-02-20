@@ -360,7 +360,8 @@ class Sdl2ReplIO(ReplIO):
 
             # sdl2.SDL_RenderSetScale(self.renderer.sdlrenderer, widthScale, heightScale);
             
-        font_path = "./Resources/IosevkaTerm-Regular.ttf"
+        # font_path = "./Resources/IosevkaNerdFontMono-Regular.ttf"
+        font_path = "./Resources/BabelStoneTibetan.ttf"
         if os.path.exists(font_path) is False:
             self.log.error(f"Font {font_path} does not exist")
         # sdl2.ext.RenderSetScale(self.renderer,2,2)
@@ -379,6 +380,8 @@ class Sdl2ReplIO(ReplIO):
         else:
             self.log.error("Cannot determine character dimensions!")
         self.line_spacing_extra:int = 0
+        script = "Tibt".encode('utf-8')
+        sdl2.sdlttf.TTF_SetFontScriptName(self.font, script)
 
     @override
     def exit(self):
@@ -844,8 +847,8 @@ class Repl():
 
 
 if __name__ == "__main__":
-    repl = Repl(engine="TEXT")
-    # repl = Repl(engine="SDL2")
+    # repl = Repl(engine="TEXT")
+    repl = Repl(engine="SDL2")
     if repl.repl.canvas_init(10,60) is False:
         repl.log.error("Init failed.")
         exit(1)
