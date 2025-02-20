@@ -1,6 +1,7 @@
 from io import BytesIO
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+from typing import cast
 
 import sdl2
 import sdl2.ext
@@ -28,9 +29,9 @@ def svgtext(renderer: sdl2.ext.Renderer, svg_bytes: bytes) -> sdl2.ext.Texture:
     # sdl2.ext.init()
     # window = sdl2.ext.Window("SVG Display", size=svg_surface.get_size())
     # renderer = sdl2.ext.Renderer(window)
-    svg_surface = sdl2.ext.image.load_svg(BytesIO(svg_bytes))
-    texture = sdl2.ext.Texture(renderer, svg_surface)
-    sdl2.SDL_FreeSurface(svg_surface)
+    svg_surface: sdl2.surface.LP_SDL_Surface = cast(sdl2.surface.LP_SDL_Surface, sdl2.ext.image.load_svg(BytesIO(svg_bytes)))  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue, reportUnknownVariableType]
+    texture = sdl2.ext.Texture(renderer, svg_surface)  # pyright: ignore[reportUnknownArgumentType]
+    sdl2.SDL_FreeSurface(svg_surface)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
     # renderer.clear()
     # renderer.copy(texture)
     # sdl2.SDL_DestroyTexture(texture)

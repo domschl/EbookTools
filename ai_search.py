@@ -2,7 +2,8 @@ import logging
 import os
 import json
 import time
-from typing import TypedDict, override, cast
+from typing import TypedDict, Protocol, override, cast
+from abc import abstractmethod
 import numpy.typing
 import numpy as np
 import pymupdf  # pyright: ignore[reportMissingTypeStubs]
@@ -12,8 +13,21 @@ try:
 except ImportError:
     ollama_available = False
 
+class AiEngine(Protocol):
+    @abstractmethod
+    def __init__(self, model:str, model_location:str="", matmul:str="numpy"):
+        pass
 
-class OllamaEmbeddings:
+    @abstractmethod
+    def embed(self, text_chunks: list[str], description:str | None=None, normalize:bool=True) -> np.typing.NDArray[np.float32]:
+        pass
+
+    @abstractmethod
+    def matmul(self, embeddings:np.typing.NDArray[np.float32], search_vector:np.typing.NDArray[np.float32]) -> np.typing.NDArray[np.float32]:
+        pass
+
+class OllamaEmbeddings(AiEngine):
+    @override
     def __init__(self, model:str, model_location:str="", matmul:str="numpy"):
         self.log: logging.Logger = logging.getLogger("OllamaEmbedder")
         self.model_available:bool = ollama_available
@@ -34,7 +48,8 @@ class OllamaEmbeddings:
             # Disable verbose Ollama:
             murks_logger = logging.getLogger("httpx")
             murks_logger.setLevel(logging.ERROR)
-    
+
+    @override    
     def embed(self, text_chunks: list[str], description:str | None=None, normalize:bool=True) -> np.typing.NDArray[np.float32]:
         if self.model_available is False:
             self.log.error("Embeddings model is not available")
@@ -47,6 +62,7 @@ class OllamaEmbeddings:
             embeddings = (embeddings.transpose() / np.linalg.norm(embeddings, axis=1)).transpose()  #pyright:ignore[reportAny]
         return embeddings
 
+    @override
     def matmul(self, embeddings:np.typing.NDArray[np.float32], search_vector:np.typing.NDArray[np.float32]) -> np.typing.NDArray[np.float32]:
         if self.matmul_engine == "numpy":
             if embeddings.shape[1] != search_vector.shape[0]:
@@ -86,7 +102,7 @@ class EmbeddingsSearch:
         if embeddings_engine in embeddings_engines:
             self.embeddings_engine:str = embeddings_engine
             if self.embeddings_engine == "ollama":
-                self.engine: OllamaEmbeddings = OllamaEmbeddings(self.model)
+                self.engine: AiEngine = OllamaEmbeddings(self.model)
             
         self.texts: dict[str, EmbeddingEntry] = {}
         self.emb_ten: np.typing.NDArray[np.float32] | None = None

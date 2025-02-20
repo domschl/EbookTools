@@ -7,7 +7,7 @@ import threading
 import queue
 from dataclasses import dataclass
 from abc import abstractmethod
-from typing import Protocol, override
+from typing import Protocol, override, cast
 
 import sdl2
 import sdl2.ext
@@ -338,18 +338,16 @@ class Sdl2ReplIO(ReplIO):
         self.event_loop_active: bool = True
         WINDOW_WIDTH, WINDOW_HEIGHT = 800, 600
         window = sdl2.ext.Window("SDL2 Text Example", size=(WINDOW_WIDTH, WINDOW_HEIGHT),
-                                 flags = (sdl2.SDL_WINDOW_ALLOW_HIGHDPI |  sdl2.SDL_RENDERER_ACCELERATED)) # sdl2.SDL_WINDOW_RESIZABLE)) #  | sdl2.SDL_WINDOW_METAL |
+                                 flags = (sdl2.SDL_WINDOW_ALLOW_HIGHDPI |  sdl2.SDL_RENDERER_ACCELERATED)) # pyright: ignore[reportAny] # sdl2.SDL_WINDOW_RESIZABLE)) #  | sdl2.SDL_WINDOW_METAL |
         window.show()  # pyright: ignore[reportUnknownMemberType]
-        self.renderer = sdl2.ext.Renderer(window)
-        if self.renderer is None:
-            self.log.error("No renderer!")
+        self.renderer:sdl2.ext.Renderer = sdl2.ext.Renderer(window)
 
         rw: ctypes.c_int = ctypes.c_int(0)
         rh: ctypes.c_int = ctypes.c_int(0)
         #prw = ctypes.POINTER(ctypes.c_int(rw))
         #prh: ctypes.POINTER(ctypes.c_int)
-        sdl2.SDL_GetRendererOutputSize(self.renderer.sdlrenderer, rw, rh);
-        if rw != WINDOW_WIDTH:
+        sdl2.SDL_GetRendererOutputSize(self.renderer.sdlrenderer, rw, rh);  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+        if rw.value != WINDOW_WIDTH:
             widthScale = rw.value / WINDOW_WIDTH
             heightScale = rh.value / WINDOW_HEIGHT
 
@@ -368,24 +366,22 @@ class Sdl2ReplIO(ReplIO):
         self.font_mag:int = 2
         self.dpi:int = 144
         font_size = 8 * self.font_mag
-        self.font = sdl2.sdlttf.TTF_OpenFontDPI(font_path.encode('utf-8'), font_size, self.dpi, self.dpi)  # pyright: ignore[reportUnknownMemberType, reportUnannotatedClassAttribute]
-        if self.font is None:
-            self.log.error(f"No font from {font_path}")
-        sdl2.sdlttf.TTF_SetFontHinting(self.font, sdl2.sdlttf.TTF_HINTING_LIGHT_SUBPIXEL)
+        self.font: sdl2.sdlttf.TTF_Font = sdl2.sdlttf.TTF_OpenFontDPI(font_path.encode('utf-8'), font_size, self.dpi, self.dpi)  # pyright: ignore[reportUnknownMemberType] # , reportUnannotatedClassAttribute]
+        sdl2.sdlttf.TTF_SetFontHinting(self.font, sdl2.sdlttf.TTF_HINTING_LIGHT_SUBPIXEL)  # pyright: ignore[reportAny, reportUnknownMemberType]
         rect = self.render_text("a", 0, 0)
         if rect is not None:
-            self.char_width: int = rect.w
-            self.char_height: int = rect.h
+            self.char_width: int = rect.w  # pyright: ignore[reportAny]
+            self.char_height: int = rect.h  # pyright: ignore[reportAny]
             print(f"Char-sizes: {self.char_width}, {self.char_height}")
         else:
             self.log.error("Cannot determine character dimensions!")
         self.line_spacing_extra:int = 0
         script = "Tibt".encode('utf-8')
-        sdl2.sdlttf.TTF_SetFontScriptName(self.font, script)
+        sdl2.sdlttf.TTF_SetFontScriptName(self.font, script)  # pyright:ignore[reportUnknownMemberType]
 
     @override
     def exit(self):
-        sdl2.sdlttf.TTF_CloseFont(self.font)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        sdl2.sdlttf.TTF_CloseFont(self.font)  # pyright: ignore[reportUnknownMemberType]
         sdl2.sdlttf.TTF_Quit()  # pyright: ignore[reportUnknownMemberType]
         sdl2.SDL_Quit()  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
 
@@ -400,43 +396,39 @@ class Sdl2ReplIO(ReplIO):
         return True
     
     # Function to render text
-    def render_text(self, text, x, y):
+    def render_text(self, text:str, x:int, y:int) -> sdl2.SDL_Rect | None:
         if text == "":
             return
         color_fg = sdl2.SDL_Color(self.fg_color[0], self.fg_color[1], self.fg_color[2])
         color_bg = sdl2.SDL_Color(self.bg_color[0], self.bg_color[1], self.bg_color[2])
         
         # Surface = sdl2.sdlttf.TTF_RenderUTF8_Solid(self.font, text.encode(), color)
-        surface = sdl2.sdlttf.TTF_RenderUTF8_LCD(self.font, text.encode(), color_fg, color_bg)
-        if surface is None:
-            self.log.error("Non-surface")
-        texture = sdl2.SDL_CreateTextureFromSurface(self.renderer.sdlrenderer, surface)
-        if texture is None:
-            self.log.error("Non-texture")        
-        rect = sdl2.SDL_Rect(x, y, surface.contents.w // self.font_mag, surface.contents.h // self.font_mag)
-        sdl2.SDL_FreeSurface(surface)
-        sdl2.SDL_RenderCopy(self.renderer.sdlrenderer, texture, None, rect)
-        sdl2.SDL_DestroyTexture(texture)
+        surface = sdl2.sdlttf.TTF_RenderUTF8_LCD(self.font, text.encode(), color_fg, color_bg)  # pyright:ignore[reportUnknownMemberType, reportUnknownVariableType]
+        texture = sdl2.SDL_CreateTextureFromSurface(self.renderer.sdlrenderer, surface)  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType, reportAttributeAccessIssue]
+        rect = sdl2.SDL_Rect(x, y, surface.contents.w // self.font_mag, surface.contents.h // self.font_mag)  # pyright: ignore[reportUnknownMemberType]
+        sdl2.SDL_FreeSurface(surface)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
+        sdl2.SDL_RenderCopy(self.renderer.sdlrenderer, texture, None, rect)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
+        sdl2.SDL_DestroyTexture(texture)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
         return rect
 
     @override
     def canvas_print_at(self, msg: str, y:int, x:int, flush:bool = False, scroll:bool=False):
-        self.render_text(msg, x*self.char_width, y*(self.char_height + self.line_spacing_extra))
+        _ = self.render_text(msg, x*self.char_width, y*(self.char_height + self.line_spacing_extra))
         self.cur_pos_x = x + len(msg)
         self.cur_pos_y = y
         
     @override
     def event_loop_tick(self):
-        events = sdl2.ext.get_events()
+        events: list[sdl2.SDL_Event] = cast(list[sdl2.SDL_Event], sdl2.ext.get_events())  # pyright: ignore[reportUnknownMemberType]
         for event in events:
-            if event.type == sdl2.SDL_QUIT:
+            if event.type == sdl2.SDL_QUIT:  # pyright: ignore[reportAny]
                 msg = InputEvent("exit", "")
                 self.input_queue.put_nowait(msg)
                 continue
-            if event.type == sdl2.SDL_KEYDOWN:
-                key_sym= event.key.keysym.sym
-                key_code = event.key.keysym.scancode
-                key_mod = event.key.keysym.mod
+            if event.type == sdl2.SDL_KEYDOWN:  # pyright: ignore[reportAny]
+                key_sym:int = event.key.keysym.sym  # pyright: ignore[reportAny]
+                key_code:int = event.key.keysym.scancode  # pyright: ignore[reportAny]
+                key_mod:int = event.key.keysym.mod  # pyright: ignore[reportAny]
                 
                 print(f"{hex(key_sym)} {key_sym} {key_code} {key_mod}")
                 if key_code == 82: # up
@@ -464,9 +456,9 @@ class Sdl2ReplIO(ReplIO):
                     self.input_queue.put_nowait(msg)
                     continue
                 continue
-            if event.type == sdl2.SDL_TEXTINPUT:
-                text_char = event.text.text.decode('utf-8')
-                text_type = event.text.type
+            if event.type == sdl2.SDL_TEXTINPUT:  # pyright: ignore[reportAny]
+                text_char:str = event.text.text.decode('utf-8')  # pyright: ignore[reportAny]
+                _text_type:int = event.text.type  # pyright: ignore[reportAny]
                 msg = InputEvent("char", text_char)
                 self.input_queue.put_nowait(msg)
                 continue
@@ -474,15 +466,15 @@ class Sdl2ReplIO(ReplIO):
 
     @override
     def canvas_render_start(self):
-        self.renderer.clear()
+        self.renderer.clear()  # pyright: ignore[reportUnknownMemberType]
         return
 
     @override
     def canvas_render_show(self):
         if self.cur_active is True:
-            sdl2.SDL_SetRenderDrawColor(self.renderer.sdlrenderer,self.fg_color[0],self.fg_color[1],self.fg_color[2],self.fg_color[3])
-            sdl2.SDL_RenderDrawLine(self.renderer.sdlrenderer, self.cur_pos_x * self.char_width, self.cur_pos_y * self.char_height, self.cur_pos_x * self.char_width, (self.cur_pos_y + 1) * self.char_height)
-        self.renderer.present()
+            sdl2.SDL_SetRenderDrawColor(self.renderer.sdlrenderer,self.fg_color[0],self.fg_color[1],self.fg_color[2],self.fg_color[3])  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
+            sdl2.SDL_RenderDrawLine(self.renderer.sdlrenderer, self.cur_pos_x * self.char_width, self.cur_pos_y * self.char_height, self.cur_pos_x * self.char_width, (self.cur_pos_y + 1) * self.char_height)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
+        self.renderer.present()  # pyright: ignore[reportUnknownMemberType]
         return
 
     @override
@@ -501,6 +493,8 @@ class Sdl2ReplIO(ReplIO):
 
     @override
     def canvas_update_size(self) -> tuple[int, int]:
+        self.cols:int
+        self.rows:int
         self.cols, self.rows = os.get_terminal_size()
         return (self.cols, self.rows)
 
@@ -542,6 +536,8 @@ class Repl():
         if schema is None:
             self.schema = self.default_schema
         cur_x_offset, cur_y_offset = self.repl.cursor_start_offset_get()
+        if schema is None:
+            schema = self.schema
         pad: Pad = Pad(
             screen_pos_x = cur_x_offset + offset_x + left_border,
             screen_pos_y = cur_y_offset + offset_y,
@@ -729,6 +725,7 @@ class Repl():
         return changed
 
     def create_editor(self, buffer: list[str], height: int, width:int = 0, offset_y:int =0, offset_x:int =0, schema: dict[str, list[int]] | None=None, line_no:bool=False, status_line:bool=False, debug:bool=False) -> int:
+        tinp: InputEvent | None
         left_border:int = 0
         bottom_border:int = 0
         if line_no is True:
@@ -742,104 +739,103 @@ class Repl():
         print("Starting editor loop")
         while self.editor_esc is False and pad is not None:
             try:
-                tinp:InputEvent | None = self.input_queue.get(timeout=0.02)
+                tinp = self.input_queue.get(timeout=0.02)
             except queue.Empty:
                 tinp = None
                 self.repl.event_loop_tick()
                 self.pad_display(pad_id)
                 continue
-            if debug is True and tinp is not None:
+            if debug is True:
                 hex_msg = f"{bytearray(tinp.msg, encoding='utf-8')}"
                 print(f"[{tinp.cmd},{tinp.msg},{hex_msg}]")
                 self.input_queue.task_done()
             else:
-                if tinp is not None:
-                    if tinp.cmd == "bsp":
-                        if pad.cur_x + pad.buf_x > 0:
-                            _ = self.pad_move(pad_id, dx = -1)
-                            pad.buffer[pad.buf_y+pad.cur_y] = pad.buffer[pad.buf_y+pad.cur_y][:pad.buf_x+pad.cur_x] + pad.buffer[pad.buf_y+pad.cur_y][pad.buf_x+pad.cur_x+1:]
-                        else:
-                            if pad.cur_y + pad.buf_y > 0:
-                                cur_idx = pad.cur_y+pad.buf_y
-                                cur_line = pad.buffer[cur_idx]
-                                _ = self.pad_move(pad_id, dy = -1)
-                                _ = self.pad_move(pad_id, x = -1)
-                                cur_idx_new = pad.cur_y+pad.buf_y
-                                pad.buffer[cur_idx_new] += cur_line
-                                del pad.buffer[cur_idx]
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == 'exit':
-                        self.editor_esc = True
-                    elif tinp.cmd == "nl":
-                        cur_ind = pad.cur_y+pad.buf_y
-                        cur_pos = pad.cur_x + pad.buf_x
-                        if cur_ind < len(pad.buffer):
-                            cur_line: str = pad.buffer[cur_ind]
-                        else:
-                            print("error cur_line invl")
-                            cur_line = ""
-                            exit(1)
-                        left = cur_line[:cur_pos]
-                        right = cur_line[cur_pos:]
-                        pad.buffer[cur_ind]=left
-                        if cur_ind == len(pad.buffer) -1:
-                            pad.buffer.append(right)
-                        else:
-                            pad.buffer.insert(cur_ind+1, right)
-                        _ = self.pad_move(pad_id, dy=1, x=0)
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == "up":
-                        _ = self.pad_move(pad_id, dy = -1)
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == "down":
-                        _ = self.pad_move(pad_id, dy = 1)
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == "left":
+                if tinp.cmd == "bsp":
+                    if pad.cur_x + pad.buf_x > 0:
                         _ = self.pad_move(pad_id, dx = -1)
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == "right":
-                        _ = self.pad_move(pad_id, dx = 1)
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == "home":
-                        _ = self.pad_move(pad_id, x=0)
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == "end":
-                        _ = self.pad_move(pad_id, x= -1)
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == "PgUp":
-                        _ = self.pad_move(pad_id, dy = -pad.height)
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == "PgDown":
-                        _ = self.pad_move(pad_id, dy = pad.height)
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == "Start":
-                        _ = self.pad_move(pad_id, x=0, y=0)
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == "End":
-                        llen = len(pad.buffer) - 1
-                        y = llen + pad.height
-                        if y > llen:
-                            y = llen
-                        _ = self.pad_move(pad_id, y=y)
-                        _ = self.pad_move(pad_id, x= -1)
-                        self.pad_display(pad_id)
-                    elif tinp.cmd == "err":
-                        print()
-                        print(tinp.msg)
-                        exit(1)
-                    elif tinp.cmd == "char":
-                        cur_ind = pad.cur_y+pad.buf_y
-                        cur_line = pad.buffer[cur_ind]
-                        if ord(tinp.msg[0]) >= 32:
-                            left = cur_line[:pad.buf_x+pad.cur_x]
-                            right = cur_line[pad.buf_x+pad.cur_x:]
-                            pad.buffer[cur_ind] = left + tinp.msg + right
-                            _ = self.pad_move(pad_id, dx = 1)
-                        self.pad_display(pad_id)
+                        pad.buffer[pad.buf_y+pad.cur_y] = pad.buffer[pad.buf_y+pad.cur_y][:pad.buf_x+pad.cur_x] + pad.buffer[pad.buf_y+pad.cur_y][pad.buf_x+pad.cur_x+1:]
                     else:
-                        print(f"Bad state: cmd={tinp.cmd}, msg={tinp.msg}")
+                        if pad.cur_y + pad.buf_y > 0:
+                            cur_idx = pad.cur_y+pad.buf_y
+                            cur_line = pad.buffer[cur_idx]
+                            _ = self.pad_move(pad_id, dy = -1)
+                            _ = self.pad_move(pad_id, x = -1)
+                            cur_idx_new = pad.cur_y+pad.buf_y
+                            pad.buffer[cur_idx_new] += cur_line
+                            del pad.buffer[cur_idx]
+                    self.pad_display(pad_id)
+                elif tinp.cmd == 'exit':
+                    self.editor_esc = True
+                elif tinp.cmd == "nl":
+                    cur_ind = pad.cur_y+pad.buf_y
+                    cur_pos = pad.cur_x + pad.buf_x
+                    if cur_ind < len(pad.buffer):
+                        cur_line: str = pad.buffer[cur_ind]
+                    else:
+                        print("error cur_line invl")
+                        cur_line = ""
                         exit(1)
-                    self.input_queue.task_done()
+                    left = cur_line[:cur_pos]
+                    right = cur_line[cur_pos:]
+                    pad.buffer[cur_ind]=left
+                    if cur_ind == len(pad.buffer) -1:
+                        pad.buffer.append(right)
+                    else:
+                        pad.buffer.insert(cur_ind+1, right)
+                    _ = self.pad_move(pad_id, dy=1, x=0)
+                    self.pad_display(pad_id)
+                elif tinp.cmd == "up":
+                    _ = self.pad_move(pad_id, dy = -1)
+                    self.pad_display(pad_id)
+                elif tinp.cmd == "down":
+                    _ = self.pad_move(pad_id, dy = 1)
+                    self.pad_display(pad_id)
+                elif tinp.cmd == "left":
+                    _ = self.pad_move(pad_id, dx = -1)
+                    self.pad_display(pad_id)
+                elif tinp.cmd == "right":
+                    _ = self.pad_move(pad_id, dx = 1)
+                    self.pad_display(pad_id)
+                elif tinp.cmd == "home":
+                    _ = self.pad_move(pad_id, x=0)
+                    self.pad_display(pad_id)
+                elif tinp.cmd == "end":
+                    _ = self.pad_move(pad_id, x= -1)
+                    self.pad_display(pad_id)
+                elif tinp.cmd == "PgUp":
+                    _ = self.pad_move(pad_id, dy = -pad.height)
+                    self.pad_display(pad_id)
+                elif tinp.cmd == "PgDown":
+                    _ = self.pad_move(pad_id, dy = pad.height)
+                    self.pad_display(pad_id)
+                elif tinp.cmd == "Start":
+                    _ = self.pad_move(pad_id, x=0, y=0)
+                    self.pad_display(pad_id)
+                elif tinp.cmd == "End":
+                    llen = len(pad.buffer) - 1
+                    y = llen + pad.height
+                    if y > llen:
+                        y = llen
+                    _ = self.pad_move(pad_id, y=y)
+                    _ = self.pad_move(pad_id, x= -1)
+                    self.pad_display(pad_id)
+                elif tinp.cmd == "err":
+                    print()
+                    print(tinp.msg)
+                    exit(1)
+                elif tinp.cmd == "char":
+                    cur_ind = pad.cur_y+pad.buf_y
+                    cur_line = pad.buffer[cur_ind]
+                    if ord(tinp.msg[0]) >= 32:
+                        left = cur_line[:pad.buf_x+pad.cur_x]
+                        right = cur_line[pad.buf_x+pad.cur_x:]
+                        pad.buffer[cur_ind] = left + tinp.msg + right
+                        _ = self.pad_move(pad_id, dx = 1)
+                    self.pad_display(pad_id)
+                else:
+                    print(f"Bad state: cmd={tinp.cmd}, msg={tinp.msg}")
+                    exit(1)
+                self.input_queue.task_done()
                 
         self.pad_display(pad_id, False)
         print("Exit edit-loop")
