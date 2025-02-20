@@ -367,7 +367,7 @@ if __name__ == "__main__":
         logger.info(f"Processed metadata, ok={m_oks}, errors={m_errs}")
     if do_embed is True:
         if emb is None:
-             emb = EmbeddingsSearch(embeddings_path = book_text_lib_embeddings, model=model_config['model_name'])
+             emb = EmbeddingsSearch(embeddings_path = book_text_lib_embeddings, model_name=model_config['model_name'], embeddings_engine='ollama', matmul_engine='mlx')
         logger.info(f"Loading text library: {book_text_lib_texts}")
         book_cnt = 0
         book_cnt += emb.read_text_library(library_name="CalNotes", library_path=notes_path, extensions=[".md"])
@@ -387,8 +387,9 @@ if __name__ == "__main__":
             exit(1)
         if emb is None:
             logger.info("Loading embeddings...")
-            emb = EmbeddingsSearch(embeddings_path = book_text_lib_embeddings, model=model_config['model_name'])
-            logger.info("Embeddings loaded, searching...")
+            # emb = EmbeddingsSearch(embeddings_path = book_text_lib_embeddings, model_name=model_config['model_name'], embeddings_engine='ollama', matmul_engine='numpy')
+            emb = EmbeddingsSearch(embeddings_path = book_text_lib_embeddings, model_name="nomic-ai/nomic-embed-text-v1.5", embeddings_engine='hf', matmul_engine='numpy')
+            logger.info(f"Embeddings loaded, searching...")
         max_results = 10
         context = 32
         context_steps = 4

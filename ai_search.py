@@ -12,10 +12,20 @@ try:
     ollama_available:bool = True
 except ImportError:
     ollama_available = False
+try:
+    import mlx.core as mx
+    mlx_available: bool = True
+except ImportError:
+    mlx_available = False
+try:  # sentence-transformers einops
+    from sentence_transformers import SentenceTransformer
+    hf_available = True
+except ImportError:
+    hf_available = False
 
 class AiEngine(Protocol):
     @abstractmethod
-    def __init__(self, model:str, model_location:str="", matmul:str="numpy"):
+    def __init__(self, model_name:str, model_location:str="", matmul_engine:str="numpy"):
         pass
 
     @abstractmethod
@@ -26,25 +36,82 @@ class AiEngine(Protocol):
     def matmul(self, embeddings:np.typing.NDArray[np.float32], search_vector:np.typing.NDArray[np.float32]) -> np.typing.NDArray[np.float32]:
         pass
 
+
+# "nomic-ai/nomic-embed-text-v2-moe"
+class HugginfaceEmbeddings(AiEngine):
+    @override
+    def __init__(self, model_name:str, model_location:str="./models/hf", matmul_engine:str="numpy"):
+        self.log: logging.Logger = logging.getLogger("HuggingfaceEmbedder")
+        self.model_available:bool = hf_available
+        if os.path.isdir(model_location) is False:
+            os.makedirs(model_location, exist_ok=True)
+        if hf_available is False:
+            self.log.error("Failed to load sentence-transformers module, is it installed?")
+        matmuls = ["numpy", "mlx", "torch"]
+        if matmul_engine in matmuls:
+            self.matmul_engine:str = matmul_engine
+        else:
+            self.log.warning(f"Invalid matmul_engine: {matmul_engine}, defaulting to numpy")
+            self.matmul_engine = "numpy"
+        if hf_available is True:
+            self.model_name: str = model_name
+            self.model_location: str = model_location
+            self.engine = SentenceTransformer(model_name, trust_remote_code=True)
+
+    @override
+    def embed(self, text_chunks: list[str], description:str | None=None, normalize:bool=True) -> np.typing.NDArray[np.float32]:
+        if self.model_available is False:
+            self.log.error("Embeddings model is not available")
+            return np.asarray([], dtype=np.float32)
+        if description is not None:
+            self.log.info(f"Generating embedding for {description}...")
+        embeddings = self.engine.encode(text_chunks)
+        self.log.info(f"Search result: {embeddings.shape}")
+        embeddings = np.asarray(embeddings, dtype=np.float32)
+        if normalize is True:
+            embeddings = (embeddings.transpose() / np.linalg.norm(embeddings, axis=1)).transpose()
+        self.log.info(f"Search result: {embeddings.shape} (after norm)")
+        return embeddings
+
+    @override
+    def matmul(self, embeddings:np.typing.NDArray[np.float32], search_vector:np.typing.NDArray[np.float32]) -> np.typing.NDArray[np.float32]:
+        if self.matmul_engine == "numpy":
+            if embeddings.shape[1] != search_vector.shape[0]:
+                self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vector[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
+                return np.asarray([], dtype=np.float32)
+            mul = np.asarray(np.matmul(embeddings, search_vector), dtype=np.float32)
+        elif self.matmul_engine == "mlx":
+            if embeddings.shape[1] != search_vector.shape[0]:
+                self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vector[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
+                return np.asarray([], dtype=np.float32)
+            mlx_emb = mx.array(embeddings)
+            mlx_srch = mx.array(search_vector)
+            mul = mx.matmul(mlx_emb, mlx_srch)
+        else:
+            self.log.error(f"Matmul engine {self.matmul_engine} not implemented!")
+            return np.asarray([], dtype=np.float32)
+        return mul
+
 class OllamaEmbeddings(AiEngine):
     @override
-    def __init__(self, model:str, model_location:str="", matmul:str="numpy"):
+    def __init__(self, model_name:str, model_location:str="", matmul_engine:str="numpy"):
         self.log: logging.Logger = logging.getLogger("OllamaEmbedder")
         self.model_available:bool = ollama_available
         if ollama_available is False:
             self.log.error("Failed to load ollama module, is it installed?")
-        matmuls = ["numpy"]
-        if matmul in matmuls:
-            self.matmul_engine:str = matmul
+        matmuls = ["numpy", "mlx"]
+        if matmul_engine in matmuls:
+            self.matmul_engine:str = matmul_engine
         else:
+            self.log.warning(f"Invalid matmul_engine: {matmul_engine}, defaulting to numpy")
             self.matmul_engine = "numpy"
         if ollama_available is True:
             try:
-                _ = ollama.show(model)  # pyright:ignore[reportPossiblyUnboundVariable]
+                _ = ollama.show(model_name)  # pyright:ignore[reportPossiblyUnboundVariable]
             except Exception as e:
-                self.log.error(f"Failed to load model {model} with ollama: {e}")
+                self.log.error(f"Failed to load model {model_name} with ollama: {e}")
                 self.model_available = False
-            self.model: str = model
+            self.model_name: str = model_name
             # Disable verbose Ollama:
             murks_logger = logging.getLogger("httpx")
             murks_logger.setLevel(logging.ERROR)
@@ -56,7 +123,7 @@ class OllamaEmbeddings(AiEngine):
             return np.asarray([], dtype=np.float32)
         if description is not None:
             self.log.info(f"Generating embedding for {description}...")
-        response = ollama.embed(model=self.model, input=text_chunks)  # pyright:ignore[reportPossiblyUnboundVariable]
+        response = ollama.embed(model=self.model_name, input=text_chunks)  # pyright:ignore[reportPossiblyUnboundVariable]
         embeddings: np.typing.NDArray[np.float32] = np.asarray(response["embeddings"], dtype=np.float32)
         if normalize is True:
             embeddings = (embeddings.transpose() / np.linalg.norm(embeddings, axis=1)).transpose()  #pyright:ignore[reportAny]
@@ -69,6 +136,13 @@ class OllamaEmbeddings(AiEngine):
                 self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vection[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
                 return np.asarray([], dtype=np.float32)
             mul = np.asarray(np.matmul(embeddings, search_vector), dtype=np.float32)
+        elif self.matmul_engine == "mlx":
+            if embeddings.shape[1] != search_vector.shape[0]:
+                self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vection[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
+                return np.asarray([], dtype=np.float32)
+            mlx_emb = mx.array(embeddings)
+            mlx_srch = mx.array(search_vector)
+            mul = mx.matmul(mlx_emb, mlx_srch)
         else:
             self.log.error("Matmul engine {self.matmul_engine} not implemented!")
             return np.asarray([], dtype=np.float32)
@@ -92,17 +166,21 @@ class SearchResult(TypedDict):
 
 
 class EmbeddingsSearch:
-    def __init__(self, embeddings_path: str, model: str, version:str="", embeddings_engine:str = "ollama", epsilon: float = 1e-6):
+    def __init__(self, embeddings_path: str, model_name: str, version:str="", embeddings_engine:str = "ollama", matmul_engine: str = "numpy", epsilon: float = 1e-6):
         self.log: logging.Logger = logging.getLogger("EmbSearch")
         self.modes: list[str] = ["filepath", "textlibrary"]
         self.epsilon: float = epsilon
-        self.model:str = model
+        self.model_name:str = model_name
+        self.matmul_engine:str = matmul_engine
         self.version:str = version
-        embeddings_engines: list[str] = ["ollama"]
+        self.engine: AiEngine
+        embeddings_engines: list[str] = ["ollama", "hf"]
         if embeddings_engine in embeddings_engines:
             self.embeddings_engine:str = embeddings_engine
             if self.embeddings_engine == "ollama":
-                self.engine: AiEngine = OllamaEmbeddings(self.model)
+                self.engine = OllamaEmbeddings(model_name=self.model_name, matmul_engine=self.matmul_engine)
+            elif self.embeddings_engine == "hf":
+                self.engine = HugginfaceEmbeddings(self.model_name, matmul_engine=self.matmul_engine) 
             
         self.texts: dict[str, EmbeddingEntry] = {}
         self.emb_ten: np.typing.NDArray[np.float32] | None = None
@@ -274,8 +352,8 @@ class EmbeddingsSearch:
         if self.emb_ten is None:
             self.log.error("No embeddings available")
             return
-        emb_file = os.path.join(self.embeddings_path, f"{self.model}{self.version}_library_embeddings.npz")
-        desc_file = os.path.join(self.embeddings_path, f"{self.model}{self.version}_library_desc.json")
+        emb_file = os.path.join(self.embeddings_path, f"{self.model_name.replace('/', '-')}{self.version}_library_embeddings.npz")
+        desc_file = os.path.join(self.embeddings_path, f"{self.model_name.replace('/', '-')}{self.version}_library_desc.json")
         np.savez(emb_file, array=self.emb_ten)
         with open(desc_file, 'w') as f:
             json.dump(self.texts, f)
@@ -284,13 +362,13 @@ class EmbeddingsSearch:
     def load_text_embeddings(self, normalize:bool = False) -> int:
         migrate:bool = False
         skip_tables:bool = False
-        emb_file = os.path.join(self.embeddings_path, f"{self.model}{self.version}_library_embeddings.npz")
+        emb_file = os.path.join(self.embeddings_path, f"{self.model_name.replace('/', '-')}{self.version}_library_embeddings.npz")
         if os.path.exists(emb_file) is False:
             emb_file = os.path.join(self.embeddings_path, f"library_embeddings.npz")
             if os.path.exists(emb_file) is True:
                 self.log.warning(f"Migrating old embeddings filename {emb_file}")
                 migrate = True
-        desc_file = os.path.join(self.embeddings_path, f"{self.model}{self.version}_library_desc.json")
+        desc_file = os.path.join(self.embeddings_path, f"{self.model_name.replace('/', '-')}{self.version}_library_desc.json")
         if os.path.exists(desc_file) is False:
             desc_file = os.path.join(self.embeddings_path, f"library_desc.json")
             if os.path.exists(desc_file) is True:
@@ -421,11 +499,16 @@ class EmbeddingsSearch:
         results: list[SearchResult] = []
         
         if self.emb_ten is None or self.texts == {}:
+            if self.emb_ten is None:
+                self.log.error("We have no embeddings?")
+            if self.texts is None:
+                self.log.error("Text library is empty!")
             return None
         t0 = time.time()
 
         t0 = time.time()
         idx_vec: np.typing.ArrayLike = self.engine.matmul(self.emb_ten, search_embeddings.transpose())
+        print(f"src-vec: {idx_vec.shape}")
         idx_list = cast(list[float], idx_vec.tolist())
         idx_idx = list(enumerate(idx_list))
         idx_srt = sorted(idx_idx, key=lambda x: x[1], reverse=True)
