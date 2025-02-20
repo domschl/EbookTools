@@ -1,0 +1,23 @@
+from io import BytesIO
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+
+
+# From: <https://gist.github.com/gmarull/dcc8218385014559c1ca46047457c364>
+# matplotlib: force computer modern font set
+plt.rc('mathtext', fontset='cm')  # pyright: ignore[reportUnknownMemberType]
+
+
+def tex2svg(formula: str, fontsize:int=12, dpi:int=200) -> bytes:
+
+    fig: Figure = plt.figure(figsize=(0.01, 0.01))  # pyright: ignore[reportUnknownMemberType]
+    _ = fig.text(0, 0, r'${}$'.format(formula), fontsize=fontsize)  # pyright: ignore[reportUnknownMemberType]
+
+    output: BytesIO = BytesIO()
+    fig.savefig(output, dpi=dpi, transparent=True, format='svg',  # pyright: ignore[reportUnknownMemberType]
+                bbox_inches='tight', pad_inches=0.0, frameon=False)
+    plt.close(fig)
+
+    _ = output.seek(0)
+    svg_str: bytes = output.read()  
+    return svg_str
