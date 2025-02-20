@@ -2,6 +2,8 @@ from io import BytesIO
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
+import sdl2
+import sdl2.ext
 
 # From: <https://gist.github.com/gmarull/dcc8218385014559c1ca46047457c364>
 # matplotlib: force computer modern font set
@@ -19,5 +21,18 @@ def tex2svg(formula: str, fontsize:int=12, dpi:int=200) -> bytes:
     plt.close(fig)
 
     _ = output.seek(0)
-    svg_str: bytes = output.read()  
-    return svg_str
+    svg_bytes: bytes = output.read()  
+    return svg_bytes
+
+def svgtext(renderer: sdl2.ext.Renderer, svg_bytes: bytes) -> sdl2.ext.Texture:
+    # sdl2.ext.init()
+    # window = sdl2.ext.Window("SVG Display", size=svg_surface.get_size())
+    # renderer = sdl2.ext.Renderer(window)
+    svg_surface = sdl2.ext.image.load_svg(BytesIO(svg_bytes))
+    texture = sdl2.ext.Texture(renderer, svg_surface)
+    sdl2.SDL_FreeSurface(svg_surface)
+    # renderer.clear()
+    # renderer.copy(texture)
+    # sdl2.SDL_DestroyTexture(texture)
+    # renderer.present()
+    return texture
