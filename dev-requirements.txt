@@ -1,5 +1,0 @@
-basedpyright
-python-lsp-server
-ruff
-jedi-language-server
-pydocstyle
