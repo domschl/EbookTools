@@ -98,6 +98,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rich" },
     { name = "sentence-transformers" },
+    { name = "torch" },
 ]
 
 [package.metadata]
@@ -118,6 +119,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "sentence-transformers", specifier = ">=3.4.1" },
+    { name = "torch", specifier = ">=2.6.0" },
 ]
 
 [[package]]
