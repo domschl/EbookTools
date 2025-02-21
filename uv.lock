@@ -93,6 +93,8 @@ dependencies = [
     { name = "pycryptodome" },
     { name = "pymupdf" },
     { name = "pypdf" },
+    { name = "pysdl2" },
+    { name = "pysdl2-dll" },
     { name = "pyyaml" },
     { name = "rich" },
     { name = "sentence-transformers" },
@@ -111,6 +113,8 @@ requires-dist = [
     { name = "pycryptodome", specifier = ">=3.21.0" },
     { name = "pymupdf", specifier = ">=1.25.3" },
     { name = "pypdf", specifier = ">=5.3.0" },
+    { name = "pysdl2", specifier = ">=0.9.17" },
+    { name = "pysdl2-dll", specifier = ">=2.30.10" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "sentence-transformers", specifier = ">=3.4.1" },
@@ -623,6 +627,31 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/2a/c6/9b0920ddcb29ce980f84f2fb585b515b1431625a1b9aeb5fd5753ee0f62e/pypdf-5.3.0.tar.gz", hash = "sha256:08393660dfea25b27ec6fe863fb2f2248e6270da5103fae49e9dea8178741951", size = 5024226 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4d/2b/3b25ddd464c4265ba65cec794012aab64f1d7dbbdfd170c567d84a0b26c9/pypdf-5.3.0-py3-none-any.whl", hash = "sha256:d7b6db242f5f8fdb4990ae11815c394b8e1b955feda0befcce862efd8559c181", size = 300731 },
+]
+
+[[package]]
+name = "pysdl2"
+version = "0.9.17"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/ff/8704d84ad4d25f0a7bf7912504f64575e432e8d57dfba2fe35f5b2db7e04/pysdl2-0.9.17.tar.gz", hash = "sha256:48c6ef01a4eb123db5f7e46e1a1b565675755b07e615f3fe20a623c94735b52b", size = 775955 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/e2/399ea7900e7510096aeb41439e6f1540bef0bdf7e15cc2d8464e4adb71e8/PySDL2-0.9.17-py3-none-any.whl", hash = "sha256:fe923dbf5c7b27bbc1eb2bf58abfa793f8f13fd7ae8b27b1bc2de49920bcbd41", size = 583137 },
+]
+
+[[package]]
+name = "pysdl2-dll"
+version = "2.30.10"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/5b/81e6037607f297e24f407a7f458242d49b0b19a5c9f3a161f51b4cefc5fc/pysdl2-dll-2.30.10.tar.gz", hash = "sha256:900c8301c6a04d4d3f726aa12f3734f35d42ff827ff873aaaadb4430336ea6c0", size = 15375 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/02/24/61e84a2710ee520e63dcf20beb957b4c5cf9ea97a49bd1e0358fa38dfa44/pysdl2_dll-2.30.10-py2.py3-none-macosx_10_11_universal2.whl", hash = "sha256:1a97b50a7f601d9f0ab007c44bb4324e61aecb288383e3940b065b77d60dbfb1", size = 6650763 },
+    { url = "https://files.pythonhosted.org/packages/25/b3/ef7a217af47aa36556b208491e88d789fa247daf22b93ed66dba04b0150c/pysdl2_dll-2.30.10-py2.py3-none-macosx_10_11_x86_64.whl", hash = "sha256:0fbf259cf73e51b268bd9e121943e61e17b2e65485117841fcb31f89e91ecb06", size = 6650760 },
+    { url = "https://files.pythonhosted.org/packages/c3/6c/049170e09ea57674b3a5b1a853bbd66fe4bb037f422e739fc8dfa5342c32/pysdl2_dll-2.30.10-py2.py3-none-manylinux2014_i686.whl", hash = "sha256:2ba837fb1150218cced4a2b6c95c60b25f5012736df879cba3b77d03315eec9d", size = 4547730 },
+    { url = "https://files.pythonhosted.org/packages/c9/43/42df9bfb479f0784a15627e8e99adbe5dbf5f5491b8b0dd9ce617fad7559/pysdl2_dll-2.30.10-py2.py3-none-manylinux2014_x86_64.whl", hash = "sha256:5ab505d17272afad29e8965dfdcb3b6551f29a3fc69a3552b730bdf855b33177", size = 4244678 },
+    { url = "https://files.pythonhosted.org/packages/26/da/44f99fc03203578554e889e43497a2f1c63502cc3f4f296dfef248fb4f58/pysdl2_dll-2.30.10-py2.py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:b406678e6b49732489f2c6dba217404caa1569a8cab13548f55ed8e4ed91df56", size = 4338472 },
+    { url = "https://files.pythonhosted.org/packages/d0/29/ff2c74c20b668ff2e147e2c2134058c6d49e2476c8c5cf802c8cfee6c5f1/pysdl2_dll-2.30.10-py2.py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:1020248bc9794780016d60984df7a4ec6ca768754f8c62120f5a1600e4eb2d5a", size = 5130466 },
+    { url = "https://files.pythonhosted.org/packages/ad/58/1c6fdf49ecb754e078cc8ddd7c57e6bbc494bbfd204c661168e89db03638/pysdl2_dll-2.30.10-py2.py3-none-win32.whl", hash = "sha256:70a448157d4280465d55f1adb431833108d2f846ceca3bfa07573801c2503bbb", size = 3409504 },
+    { url = "https://files.pythonhosted.org/packages/68/8b/6f5519f0972095c23201464bd25fcce7764e0b7ab40adcdff151890afbd9/pysdl2_dll-2.30.10-py2.py3-none-win_amd64.whl", hash = "sha256:e2e44af09ff5513cf6ec3a3cde945edf752dd83fcc7221fb0531cacb1fa2741b", size = 3909260 },
 ]
 
 [[package]]
