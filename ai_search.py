@@ -22,6 +22,12 @@ try:  # sentence-transformers einops
     hf_available = True
 except ImportError:
     hf_available = False
+try:
+    import torch
+    torch_available = True
+except ImportError:
+    torch_available = False
+
 
 class AiEngine(Protocol):
     @abstractmethod
@@ -80,6 +86,13 @@ class HugginfaceEmbeddings(AiEngine):
                 self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vector[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
                 return np.asarray([], dtype=np.float32)
             mul = np.asarray(np.matmul(embeddings, search_vector), dtype=np.float32)
+        elif self.matmul_engine == "torch":
+            if embeddings.shape[1] != search_vector.shape[0]:
+                self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vector[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
+                return np.asarray([], dtype=np.float32)
+            embeddings_tensor = torch.tensor(embeddings)
+            search_vector_tensor = torch.tensor(search_vector)
+            mul = torch.matmul(embeddings_tensor, search_vector_tensor).numpy()
         elif self.matmul_engine == "mlx":
             if embeddings.shape[1] != search_vector.shape[0]:
                 self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vector[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
