@@ -7,6 +7,9 @@ from abc import abstractmethod
 import numpy.typing
 import numpy as np
 import pymupdf  # pyright: ignore[reportMissingTypeStubs]
+import torch
+from sentence_transformers import SentenceTransformer
+
 try:
     import ollama
     ollama_available:bool = True
@@ -17,21 +20,11 @@ try:
     mlx_available: bool = True
 except ImportError:
     mlx_available = False
-try:  # sentence-transformers einops
-    from sentence_transformers import SentenceTransformer
-    hf_available = True
-except ImportError:
-    hf_available = False
-try:
-    import torch
-    torch_available = True
-except ImportError:
-    torch_available = False
 
 
-class AiEngine(Protocol):
+class ProvidesEmbeddingsEngine(Protocol):
     @abstractmethod
-    def __init__(self, model_name:str, model_location:str="", matmul_engine:str="numpy"):
+    def __init__(self, embeddings_model_name:str, embeddings_model_alias:str = "", matmul_engine_name:str="numpy"):
         pass
 
     @abstractmethod
@@ -39,30 +32,35 @@ class AiEngine(Protocol):
         pass
 
     @abstractmethod
-    def matmul(self, embeddings:np.typing.NDArray[np.float32], search_vector:np.typing.NDArray[np.float32]) -> np.typing.NDArray[np.float32]:
+    def cache_embeddings_matrix(self, embeddings_matrix:np.typing.NDArray[np.float32]) -> None:
         pass
 
+    @abstractmethod
+    def matmul(self, search_vector:np.typing.NDArray[np.float32], embeddings_matrix:np.typing.NDArray[np.float32] | None) -> np.typing.NDArray[np.float32]:
+        pass
+ 
 
 # "nomic-ai/nomic-embed-text-v2-moe"
-class HugginfaceEmbeddings(AiEngine):
+class HugginfaceEmbeddings(ProvidesEmbeddingsEngine):
     @override
-    def __init__(self, model_name:str, model_location:str="./models/hf", matmul_engine:str="numpy"):
+    def __init__(self, embeddings_model_name:str, embeddings_model_alias:str = "", matmul_engine_name:str="numpy"):
         self.log: logging.Logger = logging.getLogger("HuggingfaceEmbedder")
-        self.model_available:bool = hf_available
-        if os.path.isdir(model_location) is False:
-            os.makedirs(model_location, exist_ok=True)
-        if hf_available is False:
-            self.log.error("Failed to load sentence-transformers module, is it installed?")
         matmuls = ["numpy", "mlx", "torch"]
-        if matmul_engine in matmuls:
-            self.matmul_engine:str = matmul_engine
+        self.cached_embeddings_matrix: np.typing.NDArray[np.float32] | None = None
+        if matmul_engine_name in matmuls:
+            self.matmul_engine_name:str = matmul_engine_name
         else:
-            self.log.warning(f"Invalid matmul_engine: {matmul_engine}, defaulting to numpy")
-            self.matmul_engine = "numpy"
-        if hf_available is True:
-            self.model_name: str = model_name
-            self.model_location: str = model_location
-            self.engine = SentenceTransformer(model_name, trust_remote_code=True)
+            self.log.warning(f"Invalid matmul_engine: {matmul_engine_name}, defaulting to numpy")
+            self.matmul_engine_name = "numpy"
+        self.model_name: str = embeddings_model_name
+        self.model_alias: str = embeddings_model_alias
+        try:
+            self.engine: SentenceTransformer | None = SentenceTransformer(embeddings_model_name)
+            self.model_available = True
+        except Exception as e:
+            self.log.error(f"Huggingface engine {embeddings_model_name} not available: {e}")
+            self.model_available = False
+            self.engine = None
 
     @override
     def embed(self, text_chunks: list[str], description:str | None=None, normalize:bool=True) -> np.typing.NDArray[np.float32]:
@@ -71,7 +69,10 @@ class HugginfaceEmbeddings(AiEngine):
             return np.asarray([], dtype=np.float32)
         if description is not None:
             self.log.info(f"Generating embedding for {description}...")
-        embeddings = self.engine.encode(text_chunks)
+        if self.engine is None:
+            self.log.error("Embeddings engine is not available")
+            return np.asarray([], dtype=np.float32)
+        embeddings:np.typing.NDArray[np.float32] = self.engine.encode(sentences=text_chunks, show_progress_bar=True, convert_to_numpy=True)  # type: ignore  # API is a mess!
         self.log.info(f"Search result: {embeddings.shape}")
         embeddings = np.asarray(embeddings, dtype=np.float32)
         if normalize is True:
@@ -80,30 +81,46 @@ class HugginfaceEmbeddings(AiEngine):
         return embeddings
 
     @override
-    def matmul(self, embeddings:np.typing.NDArray[np.float32], search_vector:np.typing.NDArray[np.float32]) -> np.typing.NDArray[np.float32]:
-        if self.matmul_engine == "numpy":
+    def cache_embeddings_matrix(self, embeddings_matrix:np.typing.NDArray[np.float32]) -> None:
+        self.cached_embeddings_matrix = embeddings_matrix
+
+    @override
+    def matmul(self, search_vector:np.typing.NDArray[np.float32], embeddings_matrix:np.typing.NDArray[np.float32] | None) -> np.typing.NDArray[np.float32]:
+        mul:np.typing.NDArray[np.float32] 
+        if embeddings_matrix is None:
+            if self.cached_embeddings_matrix is None:
+                self.log.error("No Embeddings matrix given or available in cache!")
+                return np.asarray([], dtype=np.float32)
+            else:
+                embeddings = self.cached_embeddings_matrix
+        else:
+            embeddings = embeddings_matrix
+        if self.matmul_engine_name == "numpy":
             if embeddings.shape[1] != search_vector.shape[0]:
                 self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vector[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
                 return np.asarray([], dtype=np.float32)
             mul = np.asarray(np.matmul(embeddings, search_vector), dtype=np.float32)
-        elif self.matmul_engine == "torch":
+        elif self.matmul_engine_name == "torch":
             if embeddings.shape[1] != search_vector.shape[0]:
                 self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vector[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
                 return np.asarray([], dtype=np.float32)
-            embeddings_tensor = torch.tensor(embeddings)
+            embeddings_tensor:torch.Tensor = torch.tensor(embeddings)
             search_vector_tensor = torch.tensor(search_vector)
-            mul = torch.matmul(embeddings_tensor, search_vector_tensor).numpy()
-        elif self.matmul_engine == "mlx":
+            mul_ten:torch.Tensor = torch.matmul(embeddings_tensor, search_vector_tensor)
+            mul:np.typing.NDArray[np.float32] = mul_ten.numpy(force=True)  # pyright: ignore[reportUnknownMemberType]
+        elif self.matmul_engine_name == "mlx":
             if embeddings.shape[1] != search_vector.shape[0]:
                 self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vector[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
                 return np.asarray([], dtype=np.float32)
-            mlx_emb = mx.array(embeddings)
-            mlx_srch = mx.array(search_vector)
-            mul = mx.matmul(mlx_emb, mlx_srch)
+            mlx_emb = mx.array(embeddings)  # pyright: ignore[reportUnknownMemberType, reportPossiblyUnboundVariable, reportUnknownVariableType]
+            mlx_srch = mx.array(search_vector)  # pyright: ignore[reportUnknownMemberType, reportPossiblyUnboundVariable, reportUnknownVariableType]
+            mul_arr = mx.matmul(mlx_emb, mlx_srch).to  # pyright: ignore[reportUnknownMemberType, reportPossiblyUnboundVariable, reportUnknownVariableType]
+            mul = np.array(mul_arr)  #pyright: ignore[reportUnknownArgumentType]
         else:
-            self.log.error(f"Matmul engine {self.matmul_engine} not implemented!")
+            self.log.error(f"Matmul engine {self.matmul_engine_name} not implemented!")
             return np.asarray([], dtype=np.float32)
         return mul
+
 
 class OllamaEmbeddings(AiEngine):
     @override
@@ -178,7 +195,9 @@ class SearchResult(TypedDict):
     yellow_liner: np.typing.NDArray[np.float32] | None
 
 
-class EmbeddingsSearch:
+class EmbeddingsSearch(self, )
+
+class OldEmbeddingsSearch:
     def __init__(self, embeddings_path: str, model_name: str, version:str="", embeddings_engine:str = "ollama", matmul_engine: str = "numpy", epsilon: float = 1e-6):
         self.log: logging.Logger = logging.getLogger("EmbSearch")
         self.modes: list[str] = ["filepath", "textlibrary"]
