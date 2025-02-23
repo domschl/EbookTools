@@ -14,7 +14,7 @@ from md_tools import MdTools, MDTable
 from indra_tools import IndraTools
 from metadata import Metadata
 from time_lines import TimeLines
-from ai_search import EmbeddingsSearch, SearchResult
+from ai_search import HuggingfaceEmbeddings, SearchResult
 
 
 class ConfigDict(TypedDict):
@@ -167,7 +167,7 @@ if __name__ == "__main__":
             "calibre_path": "~/ReferenceLibrary/Calibre Library",
             "kindle_path": "~/Workbench/KindleClippings",
             "meta_path": "~/MetaLibrary",
-            "book_text_lib": "~/BookTextLibrary",
+            "book_text_lib": "~/VectorLib",
             "notes_path": "~/Notes",
             "notes_books_subfolder": "Books",
             "export_formats": ["epub", "pdf"],
@@ -178,14 +178,14 @@ if __name__ == "__main__":
             _ = f.write(json.dumps(default_config, indent=4))
         logger.info(f"Config file {config_file} created, please edit it")
         default_model: EmbeddingsModel = {
-             "model_name": "snowflake-arctic-embed2",
+             "model_name": "nomic-ai/nomic-embed-text-v2-moe",
              "chunk_size": 2048,
              "chunk_overlap": 2048 // 3,
         }
         txt_data = os.path.expanduser(default_config['book_text_lib'])
         os.makedirs(os.path.join(txt_data, "Texts"), exist_ok=True)
         os.makedirs(os.path.join(txt_data, "PDF_Texts"), exist_ok=True)
-        embs = os.path.join(txt_data, "Embeddings")
+        embs = os.path.join(txt_data, "embeddings")
         os.makedirs(embs, exist_ok=True)
         model_file = os.path.join(embs, 'model.json')
         with open(model_file, "w") as f:
@@ -206,14 +206,14 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"Error reading config file {config_file}: {e}")
             exit(1)
-    book_text_lib_embeddings: str = os.path.join(book_text_lib_root, "Embeddings")
+    book_text_lib_embeddings: str = os.path.join(book_text_lib_root, "embeddings")
     book_text_lib_texts: str = os.path.join(book_text_lib_root, "Texts")
     book_text_lib_pdf_texts: str = os.path.join(book_text_lib_root, "PDF_Texts")
     model_file = os.path.join(book_text_lib_embeddings, 'model.json')
     model_config: EmbeddingsModel = {
-         "model_name": "",
+         "model_name": "nomic-ai/nomic-embed-text-v2-moe",
          "chunk_size": 2048,
-         "chunk_overlap": 0
+         "chunk_overlap": 1024
          }
     if os.path.exists(model_file) is True:
          with open(model_file, "r") as f:
@@ -367,19 +367,19 @@ if __name__ == "__main__":
         logger.info(f"Processed metadata, ok={m_oks}, errors={m_errs}")
     if do_embed is True:
         if emb is None:
-             emb = EmbeddingsSearch(embeddings_path = book_text_lib_embeddings, model_name=model_config['model_name'], embeddings_engine='hf', matmul_engine='torch')
+             emb = HuggingfaceEmbeddings(repository = book_text_lib_root, embeddings_model_name=model_config['model_name'])
+             emb.load_state()
         logger.info(f"Loading text library: {book_text_lib_texts}")
         book_cnt = 0
-        book_cnt += emb.read_text_library(library_name="CalNotes", library_path=notes_path, extensions=[".md"])
-        book_cnt += emb.read_text_library("CalText", book_text_lib_texts, extensions=[".txt"])
-        logger.info(f"{book_cnt} text books+notes loaded, loading PDFs...")
-        book_cnt += emb.read_pdf_library(library_name="CalPdf", library_path=meta_path, pdf_cache=book_text_lib_pdf_texts)
-        logger.info(f"{book_cnt} pdf+text books loaded, generating embeddings...")
-        emb.gen_embeddings(library_name="CalNotes", verbose=True)
-        emb.gen_embeddings(library_name="CalText", verbose=True)
+        # book_cnt += emb.add_texts(library_name="CalNotes", source_folder=notes_path, formats=["md"])
+        book_cnt += emb.add_texts(library_name="CalNotes", source_folder="~/Temp/Rezepte", formats=["md"])
+        # book_cnt += emb.add_texts(library_name="CalText", source_folder=book_text_lib_texts, formats=["txt"])
+        # logger.info(f"{book_cnt} text books+notes loaded, loading PDFs...")
+        # book_cnt += emb.add_texts(library_name="CalPdf", source_folder=meta_path, formats=["pdf"])
+        # logger.info(f"{book_cnt} pdf+text books loaded, generating embeddings...")
+        emb.generate_embeddings()
+        emb.save_state()
         logger.info("Text embeddings processed")
-        emb.gen_embeddings(library_name="CalPdf", verbose=True)
-        logger.info("PDF embeddings processed")
     if do_search is True:
         search_spec = cast(str, args.keywords)
         if search_spec == "":
@@ -387,19 +387,20 @@ if __name__ == "__main__":
             exit(1)
         if emb is None:
             logger.info("Loading embeddings...")
-            emb = EmbeddingsSearch(embeddings_path = book_text_lib_embeddings, model_name=model_config['model_name'], embeddings_engine='hf', matmul_engine='torch')
-            logger.info(f"Embeddings loaded, searching...")
-        max_results = 10
+            emb = HuggingfaceEmbeddings(repository = book_text_lib_root, embeddings_model_name=model_config['model_name'])
+            emb.load_state()
+        max_results = 2
         context = 32
         context_steps = 4
         yellow = True
-        results: list[SearchResult] | None = emb.search_embeddings(search_text=search_spec, yellow_liner=yellow, context=context, context_steps=context_steps, max_results=max_results)
-        if results is not None and len(results) > 0:
+        results: list[SearchResult] | None = emb.search(search_text=search_spec, yellow_liner=yellow, context=context, context_steps=context_steps, max_results=max_results)
+        if len(results) > 0:
             for i in range(len(results)):
                 result = results[i]
                 y_min: float | None = None
                 y_max: float | None = None
                 ryel = result['yellow_liner']
+                # print(ryel)
                 yels: list[float] = []
                 if ryel is not None:
                     if len(ryel.shape) == 1:
@@ -432,12 +433,17 @@ if __name__ == "__main__":
                     from rich.console import Console
                     console = Console()
                     line = ""
+                    print(result['chunk'])
                     for i, c in enumerate(result['chunk']):
-                         yel:float = (yels[i // context_steps]-y_min)/(y_max - y_min)
-                         if yel < 0.5:
-                              yel = 0.0
-                         col = hex(255 - int(yel*127.0))[2:]
-                         line += f"[black on #FFFF{col}]"+c+"[/]"
+                        y_ind = i//context_steps
+                        if y_ind >= len(yels):
+                            print(f"Index out of range: {y_ind}, len(yels): {len(yels)}")
+                        else:
+                            yel:float = (yels[y_ind]-y_min)/(y_max - y_min)
+                            if yel < 0.5:
+                                yel = 0.0
+                            col = hex(255 - int(yel*127.0))[2:]
+                            line += f"[black on #FFFF{col}]"+c+"[/]"
                     # print(line)
                     console.print(line)
                 print("-----------------------------------------------")

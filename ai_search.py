@@ -1,506 +1,324 @@
 import logging
 import os
 import json
-import time
-from typing import TypedDict, Protocol, override, cast
-from abc import abstractmethod
-import numpy.typing
+from typing import TypedDict, cast
 import numpy as np
 import pymupdf  # pyright: ignore[reportMissingTypeStubs]
 import torch
 from sentence_transformers import SentenceTransformer
-
-try:
-    import ollama
-    ollama_available:bool = True
-except ImportError:
-    ollama_available = False
-try:
-    import mlx.core as mx
-    mlx_available: bool = True
-except ImportError:
-    mlx_available = False
+import uuid
 
 
-class ProvidesEmbeddingsEngine(Protocol):
-    @abstractmethod
-    def __init__(self, embeddings_model_name:str, embeddings_model_alias:str = "", matmul_engine_name:str="numpy"):
-        pass
-
-    @abstractmethod
-    def embed(self, text_chunks: list[str], description:str | None=None, normalize:bool=True) -> np.typing.NDArray[np.float32]:
-        pass
-
-    @abstractmethod
-    def cache_embeddings_matrix(self, embeddings_matrix:np.typing.NDArray[np.float32]) -> None:
-        pass
-
-    @abstractmethod
-    def matmul(self, search_vector:np.typing.NDArray[np.float32], embeddings_matrix:np.typing.NDArray[np.float32] | None) -> np.typing.NDArray[np.float32]:
-        pass
- 
-
-# "nomic-ai/nomic-embed-text-v2-moe"
-class HugginfaceEmbeddings(ProvidesEmbeddingsEngine):
-    @override
-    def __init__(self, embeddings_model_name:str, embeddings_model_alias:str = "", matmul_engine_name:str="numpy"):
-        self.log: logging.Logger = logging.getLogger("HuggingfaceEmbedder")
-        matmuls = ["numpy", "mlx", "torch"]
-        self.cached_embeddings_matrix: np.typing.NDArray[np.float32] | None = None
-        if matmul_engine_name in matmuls:
-            self.matmul_engine_name:str = matmul_engine_name
-        else:
-            self.log.warning(f"Invalid matmul_engine: {matmul_engine_name}, defaulting to numpy")
-            self.matmul_engine_name = "numpy"
-        self.model_name: str = embeddings_model_name
-        self.model_alias: str = embeddings_model_alias
-        try:
-            self.engine: SentenceTransformer | None = SentenceTransformer(embeddings_model_name)
-            self.model_available = True
-        except Exception as e:
-            self.log.error(f"Huggingface engine {embeddings_model_name} not available: {e}")
-            self.model_available = False
-            self.engine = None
-
-    @override
-    def embed(self, text_chunks: list[str], description:str | None=None, normalize:bool=True) -> np.typing.NDArray[np.float32]:
-        if self.model_available is False:
-            self.log.error("Embeddings model is not available")
-            return np.asarray([], dtype=np.float32)
-        if description is not None:
-            self.log.info(f"Generating embedding for {description}...")
-        if self.engine is None:
-            self.log.error("Embeddings engine is not available")
-            return np.asarray([], dtype=np.float32)
-        embeddings:np.typing.NDArray[np.float32] = self.engine.encode(sentences=text_chunks, show_progress_bar=True, convert_to_numpy=True)  # type: ignore  # API is a mess!
-        self.log.info(f"Search result: {embeddings.shape}")
-        embeddings = np.asarray(embeddings, dtype=np.float32)
-        if normalize is True:
-            embeddings = (embeddings.transpose() / np.linalg.norm(embeddings, axis=1)).transpose()
-        self.log.info(f"Search result: {embeddings.shape} (after norm)")
-        return embeddings
-
-    @override
-    def cache_embeddings_matrix(self, embeddings_matrix:np.typing.NDArray[np.float32]) -> None:
-        self.cached_embeddings_matrix = embeddings_matrix
-
-    @override
-    def matmul(self, search_vector:np.typing.NDArray[np.float32], embeddings_matrix:np.typing.NDArray[np.float32] | None) -> np.typing.NDArray[np.float32]:
-        mul:np.typing.NDArray[np.float32] 
-        if embeddings_matrix is None:
-            if self.cached_embeddings_matrix is None:
-                self.log.error("No Embeddings matrix given or available in cache!")
-                return np.asarray([], dtype=np.float32)
-            else:
-                embeddings = self.cached_embeddings_matrix
-        else:
-            embeddings = embeddings_matrix
-        if self.matmul_engine_name == "numpy":
-            if embeddings.shape[1] != search_vector.shape[0]:
-                self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vector[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
-                return np.asarray([], dtype=np.float32)
-            mul = np.asarray(np.matmul(embeddings, search_vector), dtype=np.float32)
-        elif self.matmul_engine_name == "torch":
-            if embeddings.shape[1] != search_vector.shape[0]:
-                self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vector[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
-                return np.asarray([], dtype=np.float32)
-            embeddings_tensor:torch.Tensor = torch.tensor(embeddings)
-            search_vector_tensor = torch.tensor(search_vector)
-            mul_ten:torch.Tensor = torch.matmul(embeddings_tensor, search_vector_tensor)
-            mul:np.typing.NDArray[np.float32] = mul_ten.numpy(force=True)  # pyright: ignore[reportUnknownMemberType]
-        elif self.matmul_engine_name == "mlx":
-            if embeddings.shape[1] != search_vector.shape[0]:
-                self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vector[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
-                return np.asarray([], dtype=np.float32)
-            mlx_emb = mx.array(embeddings)  # pyright: ignore[reportUnknownMemberType, reportPossiblyUnboundVariable, reportUnknownVariableType]
-            mlx_srch = mx.array(search_vector)  # pyright: ignore[reportUnknownMemberType, reportPossiblyUnboundVariable, reportUnknownVariableType]
-            mul_arr = mx.matmul(mlx_emb, mlx_srch).to  # pyright: ignore[reportUnknownMemberType, reportPossiblyUnboundVariable, reportUnknownVariableType]
-            mul = np.array(mul_arr)  #pyright: ignore[reportUnknownArgumentType]
-        else:
-            self.log.error(f"Matmul engine {self.matmul_engine_name} not implemented!")
-            return np.asarray([], dtype=np.float32)
-        return mul
-
-
-class OllamaEmbeddings(AiEngine):
-    @override
-    def __init__(self, model_name:str, model_location:str="", matmul_engine:str="numpy"):
-        self.log: logging.Logger = logging.getLogger("OllamaEmbedder")
-        self.model_available:bool = ollama_available
-        if ollama_available is False:
-            self.log.error("Failed to load ollama module, is it installed?")
-        matmuls = ["numpy", "mlx"]
-        if matmul_engine in matmuls:
-            self.matmul_engine:str = matmul_engine
-        else:
-            self.log.warning(f"Invalid matmul_engine: {matmul_engine}, defaulting to numpy")
-            self.matmul_engine = "numpy"
-        if ollama_available is True:
-            try:
-                _ = ollama.show(model_name)  # pyright:ignore[reportPossiblyUnboundVariable]
-            except Exception as e:
-                self.log.error(f"Failed to load model {model_name} with ollama: {e}")
-                self.model_available = False
-            self.model_name: str = model_name
-            # Disable verbose Ollama:
-            murks_logger = logging.getLogger("httpx")
-            murks_logger.setLevel(logging.ERROR)
-
-    @override    
-    def embed(self, text_chunks: list[str], description:str | None=None, normalize:bool=True) -> np.typing.NDArray[np.float32]:
-        if self.model_available is False:
-            self.log.error("Embeddings model is not available")
-            return np.asarray([], dtype=np.float32)
-        if description is not None:
-            self.log.info(f"Generating embedding for {description}...")
-        response = ollama.embed(model=self.model_name, input=text_chunks)  # pyright:ignore[reportPossiblyUnboundVariable]
-        embeddings: np.typing.NDArray[np.float32] = np.asarray(response["embeddings"], dtype=np.float32)
-        if normalize is True:
-            embeddings = (embeddings.transpose() / np.linalg.norm(embeddings, axis=1)).transpose()  #pyright:ignore[reportAny]
-        return embeddings
-
-    @override
-    def matmul(self, embeddings:np.typing.NDArray[np.float32], search_vector:np.typing.NDArray[np.float32]) -> np.typing.NDArray[np.float32]:
-        if self.matmul_engine == "numpy":
-            if embeddings.shape[1] != search_vector.shape[0]:
-                self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vection[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
-                return np.asarray([], dtype=np.float32)
-            mul = np.asarray(np.matmul(embeddings, search_vector), dtype=np.float32)
-        elif self.matmul_engine == "mlx":
-            if embeddings.shape[1] != search_vector.shape[0]:
-                self.log.error(f"Shape mismatch on matmul: embeddings[{embeddings.shape}] x search_vection[{search_vector.shape[0]}], because {embeddings.shape[1]} != {search_vector.shape[0]}")
-                return np.asarray([], dtype=np.float32)
-            mlx_emb = mx.array(embeddings)
-            mlx_srch = mx.array(search_vector)
-            mul = mx.matmul(mlx_emb, mlx_srch)
-        else:
-            self.log.error("Matmul engine {self.matmul_engine} not implemented!")
-            return np.asarray([], dtype=np.float32)
-        return mul
-
-
-class EmbeddingEntry(TypedDict):
+class EmbeddingsEntry(TypedDict):
     filename: str
     text: str
-    page_no: int
     emb_ten_idx: int
     emb_ten_size: int
 
 class SearchResult(TypedDict):
     cosine: float
     index: int
+    offset: int
     desc: str
     text: str
     chunk: str
     yellow_liner: np.typing.NDArray[np.float32] | None
 
+class PDFIndex(TypedDict):
+    filename: str
+    file_size: int
 
-class EmbeddingsSearch(self, )
 
-class OldEmbeddingsSearch:
-    def __init__(self, embeddings_path: str, model_name: str, version:str="", embeddings_engine:str = "ollama", matmul_engine: str = "numpy", epsilon: float = 1e-6):
-        self.log: logging.Logger = logging.getLogger("EmbSearch")
-        self.modes: list[str] = ["filepath", "textlibrary"]
-        self.epsilon: float = epsilon
-        self.model_name:str = model_name
-        self.matmul_engine:str = matmul_engine
-        self.version:str = version
-        self.engine: AiEngine
-        embeddings_engines: list[str] = ["ollama", "hf"]
-        if embeddings_engine in embeddings_engines:
-            self.embeddings_engine:str = embeddings_engine
-            if self.embeddings_engine == "ollama":
-                self.engine = OllamaEmbeddings(model_name=self.model_name, matmul_engine=self.matmul_engine)
-            elif self.embeddings_engine == "hf":
-                self.engine = HugginfaceEmbeddings(self.model_name, matmul_engine=self.matmul_engine) 
+# "nomic-ai/nomic-embed-text-v2-moe"
+class HuggingfaceEmbeddings():
+    def __init__(self, embeddings_model_name:str, repository:str):
+        self.log: logging.Logger = logging.getLogger("HuggingfaceEmbedder")
+        self.embeddings_matrix: torch.Tensor | None = None
+        self.model_name: str = embeddings_model_name
+        if os.path.isdir(repository) is False:
+            self.log.error(f"Repository {repository} does not exist!")
+            self.repository_path = None
+        else:
+            self.repository_path = repository
+            self.pdf_cache_path = os.path.join(self.repository_path, "PDF_Cache")
+            self.embeddings_path = os.path.join(self.repository_path, "embeddings")
+
+        self.texts:dict[str, EmbeddingsEntry] = {}
+        self.new_texts:dict[str, EmbeddingsEntry] = {}
+        self.pdf_index:dict[str, PDFIndex] = {}
+        self.chunks:list[str] = []
+        self.debris:list[str] = []
+        try:
+            self.engine: SentenceTransformer | None = SentenceTransformer(embeddings_model_name, trust_remote_code=True)
+            self.model_available = True
+        except Exception as e:
+            self.log.error(f"Huggingface engine {embeddings_model_name} not available: {e}")
+            self.model_available = False
+            self.engine = None
+
+    def load_state(self) -> bool:
+        if self.repository_path is None:
+            self.log.error("Cannot load state, since repository_path does not exist!")
+            return False
+        model_san = self.model_name.replace('/', '-')
+        state_file = os.path.join(self.repository_path, f"texts_library_{model_san}.json")
+        if os.path.exists(state_file) is False:
+            self.log.error(f"Can't open {state_file}")
+            return False
+        with open(state_file, 'r') as f:
+            self.texts = json.load(f)
+        os.makedirs(self.pdf_cache_path, exist_ok=True)
+        pdf_cache_index = os.path.join(self.pdf_cache_path, "pdf_index.json")
+        if os.path.exists(pdf_cache_index):
+            with open(pdf_cache_index, 'r') as f:
+                self.pdf_index = json.load(f)
+        else:
+            self.pdf_index = {}
+        os.makedirs(self.embeddings_path, exist_ok=True)
+        embeddings_tensor_file = os.path.join(self.embeddings_path, f"embeddings_{model_san}.pt")
+        if os.path.exists(embeddings_tensor_file):
+            self.embeddings_matrix = torch.load(embeddings_tensor_file)  # type: ignore
+        else:
+            self.embeddings_matrix = None
+        if self.embeddings_matrix is not None:
+            sum = 0
+            for desc in self.texts:
+                sum += self.texts[desc]['emb_ten_size']
+            self.log.info(f"Matrix: {self.embeddings_matrix.shape}, chunks: {sum}, texts: {len(self.texts.keys())}")
+            if sum != self.embeddings_matrix.shape[0]:
+                self.log.error("Embeddings-matrix and text chunks have diverged!")
+                exit(1)
+        else:
+            self.log.warning("No embeddings available!")
+        return True
+
+    def save_state(self) -> bool:
+        if self.repository_path is None:
+            self.log.error("Cannot save state, since repository_path does not exist!")
+            return False
+        model_san = self.model_name.replace('/', '-')
+        state_file = os.path.join(self.repository_path, f"texts_library_{model_san}.json")
+        with open(state_file, 'w') as f:
+            json.dump(self.texts, f)
+        if os.path.isdir(self.pdf_cache_path) is False:
+            os.makedirs(self.pdf_cache_path, exist_ok=True)
+        pdf_cache_index = os.path.join(self.pdf_cache_path, "pdf_index.json")
+        with open(pdf_cache_index, 'w') as f:
+            json.dump(self.pdf_index, f)
+        if os.path.isdir(self.embeddings_path) is False:
+            os.makedirs(self.embeddings_path, exist_ok=True)
+        embeddings_tensor_file = os.path.join(self.embeddings_path, f"embeddings_{model_san}.pt")
+        if self.embeddings_matrix is not None:
+            torch.save(self.embeddings_matrix, embeddings_tensor_file)  # type: ignore
+        return True
+
+    def embed(self, text_chunks: list[str], description:str | None=None, append:bool=False):
+        if self.model_available is False:
+            self.log.error("Embeddings model is not available")
+            return torch.Tensor([])
+        if description is not None:
+            self.log.info(f"Generating embedding for {description}...")
+        if self.engine is None:
+            self.log.error("Embeddings engine is not available")
+            return torch.Tensor([])
+        self.log.info(f"Encoding {len(text_chunks)} chunks...")
+        if len(text_chunks) == 0:
+            self.log.error("Cannot encode empty text list!")
+            return torch.tensor([])
+        embeddings: list[torch.Tensor] = self.engine.encode(sentences=text_chunks, show_progress_bar=True, convert_to_numpy=False)  # type: ignore  # API is a mess!
+        emb_matrix = torch.stack(embeddings)  # pyright: ignore[reportUnknownArgumentType]
+        if append is True:
+            if self.embeddings_matrix is None:
+                self.embeddings_matrix = emb_matrix
+            else:
+                self.embeddings_matrix = torch.cat([self.embeddings_matrix, emb_matrix])
+        return emb_matrix
+
+    def search_vect(self, text:str) -> tuple[list[tuple[int, float]], torch.Tensor]:
+        if self.embeddings_matrix is None:
+            self.log.error("No embeddings available!")
+            return [], torch.Tensor([])
+        vect: list[torch.Tensor] = self.engine.encode([text], show_progress_bar=True, convert_to_numpy=False)  # type:ignore
+        if len(vect) == 0:
+            self.log.error("Failed to calculate embedding for search")
+            return [], torch.Tensor([])
+        if len(vect) > 1:
+            self.log.warning("Result contains more than one vector, ignoring additional ones")
+        search_vect:torch.Tensor = vect[0]
+        # print(search_vect)
+        # print(self.embeddings_matrix)
+        # print(f"{self.embeddings_matrix.shape} x {search_vect.shape}")
+        simil = enumerate(torch.matmul(self.embeddings_matrix, search_vect).cpu().numpy().tolist())  # type:ignore
+        sorted_simil:list[tuple[int, float]] = sorted(simil, key=lambda x: x[1], reverse=True)  # type:ignore
+        # print(sorted_simil[:10])
+        return sorted_simil, search_vect
+
+    def get_chunk(self, text: str, index: int, chunk_size: int=2048, chunk_overlap:int=0) -> str:
+        chunk = text[index*(chunk_size-chunk_overlap):(index+1)*(chunk_size-chunk_overlap)]
+        return chunk
+
+    def get_chunks(self, text:str, chunk_size:int=2048, chunk_overlap:int=0) -> list[str]:
+        chunks = (len(text) - 1) // (chunk_size - chunk_overlap) + 1 
+        text_chunks = [self.get_chunk(text, i) for i in range(chunks) ]
+        return text_chunks
             
-        self.texts: dict[str, EmbeddingEntry] = {}
-        self.emb_ten: np.typing.NDArray[np.float32] | None = None
-        self.texts_ptr_list: list[str] = []
-        self.emb_ten_idx_to_text_ptr: list[int] = []
-        self.repos: dict[str, str] = {}
-        e_path = os.path.expanduser(embeddings_path)
-        if os.path.exists(e_path) is False:
-            self.log.error(f"embeddings_path={embeddings_path} does not exist!")
-        self.embeddings_path: str = e_path
-        _ = self.load_text_embeddings()
-        _ = self.load_repos()
-
-    def load_repos(self, silent: bool = True) -> int:
-        repo_file = os.path.join(self.embeddings_path, 'repos_embeddings.json')
-        if os.path.exists(repo_file) is False:
-            if silent is False:
-                self.log.error(f"Repo file {repo_file} does not exist!")
+    def add_texts(self, source_folder:str, library_name:str, formats:list[str] = ["pdf", "txt", "md"], use_pdf_cache:bool=True, chunk_size:int=2048, chunk_overlap:int=1024):
+        if self.repository_path is None:
+            self.log.error("Cannot add texts, since repository path does not exist")
             return 0
-        with open(repo_file, 'r') as f:
-            self.repos  = json.load(f)
-        return len(self.repos)
-
-    def save_repos(self):
-        repo_file = os.path.join(self.embeddings_path, 'repos_embeddings.json')
-        with open(repo_file, 'w') as f:
-            json.dump(self.repos, f)
-
-    def read_pdf_library(self, library_name: str, library_path: str, pdf_cache:str) -> int:
-        l_path = os.path.abspath(os.path.expanduser(library_path))
-        count = 0
-        if os.path.exists(l_path) is False:
-            self.log.error("library_path {library_path} does not exist!")
-            return count
-        if library_name in self.repos and self.repos[library_name] != l_path and os.path.abspath(os.path.expanduser(self.repos[library_name])) != l_path:
-            self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {os.path.abspath(os.path.expanduser(self.repos[library_name]))}, ignored!")
-        else:
-            home = os.path.expanduser("~")
-            if library_path.startswith(home):
-                library_path = "~" + library_path[len(home):]
-            self.repos[library_name] = library_path
-            self.save_repos()
-        for root, _dir, files in os.walk(l_path):
-            for file in files:
-                if file.endswith('.pdf'):
-                    rel_path = root[len(l_path)+1:]
-                    
-                    pdf_cache_path = os.path.join(pdf_cache, rel_path)
-                    cache_file = os.path.splitext(file)[0] + ".txt"
-                    pdf_cache_file = os.path.join(pdf_cache_path, cache_file)
-                    descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}"
-                    if os.path.exists(pdf_cache_file) is True:
-                        with open(pdf_cache_file, "r") as f:
-                            pdf_text = f.read()
-                        page_no = 1
-                    else:
-                        full_path = os.path.join(root, file)
-                        doc = pymupdf.open(full_path)
-                        page_no:int = 0
-                        entry: EmbeddingEntry
-                        pdf_text: str = ""
-                        for page in doc:
-                            page_no += 1
-                            page_text = page.get_text()  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue, reportUnknownVariableType]
-                            if isinstance(page_text, str) is False:
-                                self.log.error(f"Can't read {rel_path} page {page_no}, ignoring page")
-                                continue
-                            page_text = cast(str, page_text)
-                            if len(page_text) == 0:
-                                continue
-                            pdf_text += page_text
-                        os.makedirs(pdf_cache_path, exist_ok=True)
-                        with open(pdf_cache_file, 'w') as f:
-                            _ = f.write(pdf_text)
-                    entry = {
-                        'filename': file,
-                        'text': pdf_text,
-                        'page_no': page_no,
-                        'emb_ten_idx': -1,
-                        'emb_ten_size': -1
-                    }
-                    if descriptor_path in self.texts:
-                        if self.texts[descriptor_path]['text'] == pdf_text:
-                            continue
-                    self.texts[descriptor_path] = entry
-                    count += 1                       
-        return count
-
-    def read_text_library(self, library_name: str, library_path: str, extensions:list[str] | None = None) -> int:
-        if extensions is None:
-            extensions = [".txt"]
-        l_path = os.path.abspath(os.path.expanduser(library_path))
-        count = 0
-        if os.path.exists(l_path) is False:
-            self.log.error("library_path {library_path} does not exist!")
-            return count
-        if library_name in self.repos and self.repos[library_name] != l_path and os.path.abspath(os.path.expanduser(self.repos[library_name])) != l_path:
-            self.log.error(f"libray_name {library_name} already registered with different path {l_path} != {self.repos[library_name]} or {os.path.abspath(os.path.expanduser(self.repos[library_name]))}, ignored!")
-        else:
-            home = os.path.expanduser("~")
-            if library_path.startswith(home):
-                library_path = "~" + library_path[len(home):]
-            self.repos[library_name] = library_path
-            self.save_repos()
-        for root, _dir, files in os.walk(l_path):
+        source_path = os.path.abspath(os.path.expanduser(source_folder))
+        lib_prefix = "{" + library_name + "}"
+        update_debris: list[str] = []
+        known_formats = ["pdf", "txt", "md", "py"]
+        for format in formats:
+            if format not in known_formats:
+                self.log.error(f"Format {format} is not supported, removing")
+                formats.remove(format)
+        for desc in self.texts:
+            if desc.startswith(lib_prefix):
+                update_debris.append(desc)
+        if 'pdf' in formats:
+            pdf_cache = os.path.join(self.repository_path, 'PDF_Cache')
+            os.makedirs(pdf_cache, exist_ok=True)
+        home_path = os.path.expanduser("~")
+        cur_idx:int = 0
+        count:int = 0
+        if self.embeddings_matrix is not None:
+            cur_idx = self.embeddings_matrix.shape[0]
+        self.log.info(f"Adding texts from {source_folder} of formats {formats}")
+        for root, _dir, files in os.walk(source_path):
             for file in files:
                 ext = os.path.splitext(file)
                 if len(ext)==2:
                     ext = ext[1]
+                    if len(ext) > 0:
+                        ext = ext[1:]
                 else:
                     self.log.error(f"Can't identify extension of {file}, ignoring")
                     continue
-                if ext in extensions:
-                    rel_path = root[len(l_path)+1:]
+                if ext in formats:
+                    dupe: bool = False
                     full_path = os.path.join(root, file)
-                    with open(full_path, 'r', encoding='utf-8') as f:
-                        try:
-                            doc_text = f.read()
-                        except Exception as e:
-                            self.log.error(f"Failed to read {full_path}, {e}")
-                            continue
-                        descriptor_path = "{" + library_name + "}" +f"{rel_path}/{file}"
-                        entry: EmbeddingEntry = {
-                            'filename': file,
-                            'text': doc_text,
-                            'page_no': -1,
-                            'emb_ten_idx': -1,
-                            'emb_ten_size': -1
-                        }
-                        if descriptor_path in self.texts:
-                            if self.texts[descriptor_path]['text'] == doc_text:
-                                continue
+                    if full_path.startswith(home_path):
+                        rel_path = "~" + full_path[len(home_path):]
+                    else:
+                        rel_path = full_path
+                    desc = lib_prefix + full_path[len(self.repository_path):]
+                    self.log.info(f"Adding: {rel_path} as {desc}")
+                    if desc in update_debris:
+                        update_debris.remove(desc)
+                        dupe = True
+                    if ext == "pdf":
+                        text: str | None = None
+                        if use_pdf_cache is True:
+                            if desc in self.pdf_index:
+                                if os.path.getsize(full_path) == self.pdf_index[desc]['file_size']:
+                                    with open(self.pdf_index[desc]['filename'], 'r') as f:
+                                        text = f.read()
+                        if text is None:
+                            doc = pymupdf.open(full_path)
+                            text = ""
+                            for page in doc:
+                                page_text = page.get_text()  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue, reportUnknownVariableType]
+                                if isinstance(page_text, str) is False:
+                                    self.log.error(f"Can't read page of {full_path}, ignoring page")
+                                    continue
+                                page_text = cast(str, page_text)
+                                if len(page_text) == 0:
+                                    continue
+                                text += page_text
+                            if text == "":
+                                text = None
                             else:
-                                self.log.info(f"Document {descriptor_path} has been modified, recalculating")
-                        self.texts[descriptor_path] = entry
-                        count += 1
-        return count
-
-    def get_chunk_cut(self, text: str, index: int, av_chunk_size: int=2048, av_chunk_overlay:int=0) -> str:
-        chunk = text[index*(av_chunk_size-av_chunk_overlay):(index+1)*(av_chunk_size-av_chunk_overlay)]
-        return chunk
-
-    def get_chunk(self, text: str, index: int, av_chunk_size: int=2048, av_chunk_overlay:int=0, chunk_method:str = "cut") -> str:
-        if chunk_method == "cut":
-            return self.get_chunk_cut(text, index, av_chunk_size, av_chunk_overlay);
-        else:
-            self.log.error("Invalid chunk_method {chunk_method}")
-            return ""
-
-    def get_chunks(self, text:str, av_chunk_size:int=2048, av_chunk_overlay:int=0, chunk_method:str="cut") -> list[str]:
-        if chunk_method == "cut":
-            chunks = (len(text) - 1) // (av_chunk_size - av_chunk_overlay) + 1 
-            text_chunks = [self.get_chunk_cut(text, i) for i in range(chunks) ]
-            return text_chunks
-        else:
-            self.log.error(f"Unknown chunk_method: {chunk_method}")
-            return []
-            
-
-    # This contains many annotations that only serve to shut up type-checker of basedpyright...
-    class NumpyEncoder(json.JSONEncoder):
-        @override  # Python 3.12 beauty
-        def default(self, o):  # pyright: ignore[reportAny, reportMissingParameterType] # type: ignore
-            if isinstance(o, np.ndarray):
-                return o.tolist()
-            return super().default(o)  # pyright: ignore[reportAny] # type: ignore
-
-    def save_text_embeddings(self):
-        if self.emb_ten is None:
-            self.log.error("No embeddings available")
-            return
-        emb_file = os.path.join(self.embeddings_path, f"{self.model_name.replace('/', '-')}{self.version}_library_embeddings.npz")
-        desc_file = os.path.join(self.embeddings_path, f"{self.model_name.replace('/', '-')}{self.version}_library_desc.json")
-        np.savez(emb_file, array=self.emb_ten)
-        with open(desc_file, 'w') as f:
-            json.dump(self.texts, f)
-        self.log.info(f"Info saved {emb_file} and {desc_file}")
-
-    def load_text_embeddings(self, normalize:bool = False) -> int:
-        migrate:bool = False
-        skip_tables:bool = False
-        emb_file = os.path.join(self.embeddings_path, f"{self.model_name.replace('/', '-')}{self.version}_library_embeddings.npz")
-        if os.path.exists(emb_file) is False:
-            emb_file = os.path.join(self.embeddings_path, f"library_embeddings.npz")
-            if os.path.exists(emb_file) is True:
-                self.log.warning(f"Migrating old embeddings filename {emb_file}")
-                migrate = True
-        desc_file = os.path.join(self.embeddings_path, f"{self.model_name.replace('/', '-')}{self.version}_library_desc.json")
-        if os.path.exists(desc_file) is False:
-            desc_file = os.path.join(self.embeddings_path, f"library_desc.json")
-            if os.path.exists(desc_file) is True:
-                self.log.warning(f"Migrating old embeddings description filename {desc_file}")
-                migrate = True
-        if os.path.exists(emb_file):
-            self.emb_ten = np.load(emb_file)['array']
-            if normalize is True and self.emb_ten is not None:
-                self.emb_ten = self.emb_ten / np.linalg.norm(self.emb_ten, axis=1)
-                self.log.warning("NORMALIZED on LOAD! OBSOLETE CODE!")
-            with open(desc_file, 'r') as f:
-                self.texts  = json.load(f)
-        else:
-            skip_tables = True
-        count = len(self.texts)
-        if self.emb_ten is not None:
-            self.log.info(f"Embeddings loaded: texts: {len(self.texts)}, emb_ten: {self.emb_ten.shape}")
-        else:
-            self.log.info(f"Embeddings loaded: texts: {len(self.texts)}")
-        if migrate is True:
-            self.save_text_embeddings()
-            self.log.info("Migration of embeddings-files complete.")
-        if skip_tables is False:
-            self.texts_ptr_list = list(self.texts.keys())
-            tpi = 0
-            eti: int = self.texts[self.texts_ptr_list[tpi]]['emb_ten_idx']
-            ets: int = self.texts[self.texts_ptr_list[tpi]]['emb_ten_size']
-            if self.emb_ten is not None:
-                self.emb_ten_idx_to_text_ptr = []
-                for i in range(self.emb_ten.shape[0]):
-                    if i<eti:
-                        self.log.error(f"Alg failed (1) at {i}, {eti}")
-                        exit(1)
-                    if i>eti+ets:
-                        self.log.error(f"Alg failed (2) at {i}, {ets}, {eti}")
-                        exit(1)
-                    self.emb_ten_idx_to_text_ptr.append(tpi)
-                    if i == eti+ets:
-                        eti = -1
-                        while eti == -1:
-                            tpi += 1
-                            eti = self.texts[self.texts_ptr_list[tpi]]['emb_ten_idx']
-                            ets = self.texts[self.texts_ptr_list[tpi]]['emb_ten_size']
-                if len(self.emb_ten_idx_to_text_ptr) != self.emb_ten.shape[0]:
-                    self.log.error(f"Alg failure (3) {len(self.emb_ten_idx_to_text_ptr)} != {self.emb_ten.shape[0]}")
-                    exit(1)
-        return count
-                
-    def gen_embeddings(self, library_name: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0,
-                       chunk_method:str = "cut",  save_every_sec: float | None=360):
-        lib_desc = '{' + library_name + '}'
-        last_save = time.time()
-        cnt: int = 0
-        max_cnt = len(self.texts.keys())
-        if self.emb_ten is None:
-            index = 0
-        else:
-            index = len(self.emb_ten)
-        for desc in self.texts:
-            if self.texts[desc]['emb_ten_idx'] != -1 and self.texts[desc]['emb_ten_size'] != -1:
-                cnt += 1
-                continue
-            if desc.startswith(lib_desc):
-                text: str = self.texts[desc]['text']
-                if len(text) == 0:
-                    continue
-                text_chunks = self.get_chunks(text, av_chunk_size, av_chunk_overlay, chunk_method)
-                self.texts[desc]['emb_ten_idx'] = index
-                self.texts[desc]['emb_ten_size'] = len(text_chunks)
-
-                t_start = time.time()
-                embeddings = self.engine.embed(text_chunks, desc, normalize=True)
-                
-                if len(embeddings.shape)<2 or embeddings.shape[0] != len(text_chunks):
-                    self.log.error(f"Assumption on numpy conversion failed, can't generate embeddings for {desc}, result: {embeddings.shape}, chunks: {len(text_chunks)}")
-                    continue
-                if self.emb_ten is None:
-                    self.emb_ten = embeddings
+                                pdf_ind: PDFIndex = {
+                                    'filename': str(uuid.uuid4()),
+                                    'file_size': os.path.getsize(full_path)
+                                }
+                                with open(pdf_ind['filename'], 'w') as f:
+                                    f.write(text)
+                                self.pdf_index[desc] = pdf_ind
+                    else:  # Text format
+                        with open(full_path, 'r') as f:
+                            text = f.read()
+                    if text is None:
+                        continue
+                    if dupe is True:
+                        if self.texts[desc]['text'] == text:
+                            continue
+                        else:
+                            update_debris.append(desc)  # re-add, changed text
+                    new_chunks = self.get_chunks(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    self.chunks += new_chunks
+                    self.new_texts[desc] = {
+                        'filename': rel_path, 
+                        'text': text,
+                        'emb_ten_idx': cur_idx,
+                        'emb_ten_size': len(new_chunks)
+                    }
+                    count += 1
+                    cur_idx += len(new_chunks)
                 else:
-                    self.emb_ten = np.append(self.emb_ten, embeddings, axis=0)  
-                index = len(self.emb_ten)
-                cnt += 1
-                dt = (time.time() - t_start) / len(text_chunks)
-                if verbose is True and self.emb_ten is not None:
-                     print(f"   Generated {cnt}/{max_cnt}: {self.emb_ten.shape}, {dt:0.5f} sec per embedding-vector")
-                if save_every_sec is not None:
-                    if time.time() - last_save > save_every_sec:
-                        self.save_text_embeddings()
-                        last_save = time.time()
-        self.save_text_embeddings()
+                    pass
+                    # self.log.info(f"Ignoring: {file}, {ext} not in {formats}")
+        self.debris += update_debris
+        return count
+    
+    def generate_embeddings(self, description:str=""):
+        if len(self.debris) > 0:
+            shift_new = 0
+            for deb in self.debris:
+                if deb not in self.texts:
+                    self.log.error(f"Debris {deb} got lost, its not in texts!")
+                    continue
+                if deb in self.pdf_index:
+                    os.remove(self.pdf_index[deb]['filename'])
+                    del self.pdf_index[deb]
+                emb:EmbeddingsEntry = self.texts[deb]
+                start:int = emb['emb_ten_idx']
+                length:int = emb['emb_ten_size']
+                shift_new += length
+                if self.embeddings_matrix is None:
+                    self.log.error("Embeddings not existing, but there's debris!")
+                    return
+                self.embeddings_matrix = torch.cat([self.embeddings_matrix[:start,:], self.embeddings_matrix[start+length:,:]])
+                for txt in self.texts:
+                    if self.texts[txt]['emb_ten_idx'] > start:
+                        self.texts[txt]['emb_ten_idx'] -= length
+                del self.texts[deb]
+                self.log.info(f"Debris {deb} cleaned up")
+            for desc in self.new_texts:
+                self.new_texts[desc]['emb_ten_idx'] -= shift_new
+        self.texts.update(self.new_texts)
+        self.new_texts = {}
 
-    # Unused, since everything is normalized
-    def cos_sim(self, a: numpy.typing.ArrayLike, b: numpy.typing.ArrayLike) -> float:
-        m: float = np.dot(a,b)
-        n: float = float(np.linalg.norm(a) * np.linalg.norm(b))
-        if n < self.epsilon:
-            n = self.epsilon
-        return float(m / n)
+        # Calc new embeddings
+        self.debris = []            
+        self.embed(self.chunks, description, append=True)
+        self.chunks = []
 
-    def yellow_line_it(self, text: str, search_embeddings: np.typing.NDArray[np.float32], context:int=16, context_steps:int=1) -> np.typing.NDArray[np.float32]:
+        # Check data consistency
+        idxs:list[tuple[int,int]] = []
+        for desc in self.texts:
+            entry = self.texts[desc]
+            idxs.append((entry['emb_ten_idx'], entry['emb_ten_size']))
+        last_idx = 0
+        idxs = sorted(idxs, key=lambda x: x[0])
+        for idx in idxs:
+            if idx[0] != last_idx:
+                self.log.error(f"Algorithm failure at debris removal: {idx[0]} != {last_idx}")
+                exit(1)
+            last_idx += idx[1]
+        if self.embeddings_matrix is None:
+            self.log.error("No embeddings available, but text debris found, algorithm failure")
+            exit(1)
+        if last_idx != self.embeddings_matrix.shape[0]:
+            self.log.error(f"Length of embeddings-tensor (dim-0) {self.embeddings_matrix.shape} != {last_idx} (last-idx), algorithm failure")
+            exit(1)
+
+    def yellow_line_it(self, text: str, search_embeddings: torch.Tensor, context:int=16, context_steps:int=1) -> np.typing.NDArray[np.float32]:
+        if self.embeddings_matrix is None:
+            self.log.error("No embeddings available at yellow-lining!")
+            return np.array([], dtype=np.float32)
         clr: list[str] = []
         for i in range(0, len(text), context_steps):
             i0 = i - context // 2
@@ -514,78 +332,44 @@ class OldEmbeddingsSearch:
             clr.append(text[i0:i1])
         if clr == []:
             clr = [text]
-        embs = self.engine.embed(clr, normalize=True)
-        yellow = np.asarray(self.engine.matmul(embs, search_embeddings.transpose()), np.float32)
-        return yellow
+        print(clr)
+        print(f"Yellow embeds: {len(clr)}, context={context}, context_steps={context_steps}")
+        embs = self.embed(clr, append=False)
+        yellow_vect: np.typing.NDArray[np.float32] = torch.matmul(embs, search_embeddings).cpu().numpy()  # type: ignore
+        print(yellow_vect.shape)
+        return yellow_vect
 
-    def search_embeddings(self, search_text: str, verbose: bool=False, av_chunk_size: int=2048, av_chunk_overlay: int=0,
-                          chunk_method:str="cut", yellow_liner: bool=False, context:int=16, context_steps:int=1, max_results:int=10) -> list[SearchResult] | None:
-
-        search_text_list = [search_text]
-        search_embeddings = self.engine.embed(search_text_list, normalize=True)
-        result: SearchResult
-        if len(search_text) > av_chunk_size:
-            self.log.warning(f"Search text is longer than av_chunk_size: {len(search_text)}")
-        if verbose is True:
-            self.log.info(f"Search-embedding: {search_embeddings.shape}")
-        results: list[SearchResult] = []
-        
-        if self.emb_ten is None or self.texts == {}:
-            if self.emb_ten is None:
-                self.log.error("We have no embeddings?")
-            if self.texts is None:
-                self.log.error("Text library is empty!")
-            return None
-        t0 = time.time()
-
-        t0 = time.time()
-        idx_vec: np.typing.ArrayLike = self.engine.matmul(self.emb_ten, search_embeddings.transpose())
-        print(f"src-vec: {idx_vec.shape}")
-        idx_list = cast(list[float], idx_vec.tolist())
-        idx_idx = list(enumerate(idx_list))
-        idx_srt = sorted(idx_idx, key=lambda x: x[1], reverse=True)
-        dt = time.time() - t0
-        if dt > 0:
-            dn = self.emb_ten.shape[0] / dt
-            self.log.info(f"Search: {dt:0.4f} sec, performance: {dn:0.2f} embeddings per second compared")
-        for res_i in range(max_results):
-            arg_max_i = idx_srt[res_i][0]
-            ptr = self.emb_ten_idx_to_text_ptr[arg_max_i]
-            txt_name: str = self.texts_ptr_list[ptr]
-            entry = self.texts[txt_name] 
-            self.log.info(f"{res_i}. {idx_vec[arg_max_i]}: {txt_name}")
-            index = arg_max_i - entry['emb_ten_idx']
-            chunk = self.get_chunk(entry['text'], index, av_chunk_size, av_chunk_overlay, chunk_method)
-            if yellow_liner is True:
-                yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
-            else:
-                yellow_liner_weights = None
-            if yellow_liner_weights is not None:
-                result = {
-                    'cosine': idx_vec[arg_max_i][0],
-                    'desc': txt_name,
-                    'index': index,
-                    'text': entry['text'],
-                    'chunk': chunk.replace('\n',' '),
-                    'yellow_liner': yellow_liner_weights[:,0]
+    def search(self, search_text:str, max_results:int=2, chunk_size:int=2048, chunk_overlap:int=1024, yellow_liner:bool=False, context:int=16, context_steps:int=4):
+        sorted_simil_all, search_embeddings = self.search_vect(search_text)
+        sorted_simil = sorted_simil_all[:max_results]
+        search_results: list[SearchResult] = []
+        yellow_liner_weights: np.typing.NDArray[np.float32] | None
+        for result in sorted_simil:
+            idx = result[0]
+            cosine = result[1]
+            for desc in self.texts:
+                entry = self.texts[desc]
+                if idx >= entry['emb_ten_idx'] and idx < entry['emb_ten_idx'] + entry['emb_ten_size']:
+                    print(f"{desc} {cosine}")
+                    # print(f"{entry['text']}")
+                    # print(f"chunk_ind: {idx - entry['emb_ten_idx']}")
+                    chunk = self.get_chunk(entry['text'], idx - entry['emb_ten_idx'], chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    # print(f"chunk: {chunk}")
+                    if yellow_liner is True:
+                        yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
+                    else:
+                        yellow_liner_weights = None
+                    sres:SearchResult = {
+                        'cosine': cosine,
+                        'index': idx,
+                        'offset': entry['emb_ten_idx'] - idx,
+                        'desc': desc,
+                        'chunk': chunk,  
+                        'text': entry['text'],
+                        'yellow_liner': yellow_liner_weights
                     }
-                results.append(result)
-            else:
-                result = {
-                    'cosine': idx_vec[arg_max_i][0],
-                    'desc': txt_name,
-                    'index': index,
-                    'text': entry['text'],
-                    'chunk': chunk.replace('\n',' '),
-                    'yellow_liner': None
-                    }
-                results.append(result)
-                
-        results = sorted(results, key=lambda x: x['cosine'], reverse=True)
-        dt = time.time() - t0
-        if verbose is True:
-            self.log.info(f"Search-time (dim: {self.emb_ten.shape}): {dt:.4f} sec")
-        return results
+                    search_results.append(sres)
+        return search_results
     
 
 model_list = [
