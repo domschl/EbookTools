@@ -7,6 +7,7 @@ import json
 import argparse
 from argparse import ArgumentParser
 from typing import TypedDict, cast, Any
+from rich.console import Console
 
 from calibre_tools import CalibreTools
 from kindle_tools import KindleTools
@@ -393,7 +394,11 @@ if __name__ == "__main__":
         context = 32
         context_steps = 4
         yellow = True
+        cols, _ = os.get_terminal_size()
         results: list[SearchResult] | None = emb.search(search_text=search_spec, yellow_liner=yellow, context=context, context_steps=context_steps, max_results=max_results)
+        print()
+        print()
+        console = Console()
         if len(results) > 0:
             for i in range(len(results)):
                 result = results[i]
@@ -420,9 +425,15 @@ if __name__ == "__main__":
                      y_min = 0
                 if y_max == None:
                      y_max = 1
-                print("-----------------------------------------------")
-                print(f"Document: {result['desc']}[{result['index']}], {result['cosine'] * 100.0:2.1f} %")
-                print("-----------------------------------------------")
+                title_text = f"Document: {result['desc']}[{result['index']}], {result['cosine'] * 100.0:2.1f} %"
+                if len(title_text) < cols: 
+                    title_text += " " * (cols - len(title_text))
+                else:
+                    title_text = title_text[:cols]
+                console.print("[#FFFF00 on #D0D000]"+"="*cols+"[/]")
+                console.print("[black on #FFFF00]"+title_text+"[/]")
+                console.print("[#FFFF00 on #E0E000]"+"-"*cols+"[/]")
+                # sys.stdout.flush()
                 # print(best_chunk)
                 # print(y_min, y_max)
                 if y_min == y_max:
@@ -430,10 +441,8 @@ if __name__ == "__main__":
                      print(result['chunk'])
                      continue
                 if yels != []:
-                    from rich.console import Console
-                    console = Console()
                     line = ""
-                    print(result['chunk'])
+                    char_ind = 0
                     for i, c in enumerate(result['chunk']):
                         y_ind = i//context_steps
                         if y_ind >= len(yels):
@@ -443,10 +452,20 @@ if __name__ == "__main__":
                             if yel < 0.5:
                                 yel = 0.0
                             col = hex(255 - int(yel*127.0))[2:]
-                            line += f"[black on #FFFF{col}]"+c+"[/]"
-                    # print(line)
-                    console.print(line)
-                print("-----------------------------------------------")
+                            if c == "\n":
+                                rest = "[black on #FFFFFF]" + " " * (cols - char_ind%cols) + "[/]"
+                                line += rest
+                                char_ind = 0
+                            else:
+                                line += f"[black on #FFFF{col}]"+c+"[/]"
+                                if ord(c)>31:
+                                    char_ind += 1
+                    if char_ind > 0:
+                        rest = "[black on #FFFFFF]" + "-" * (cols - char_ind%cols) + "[/]"
+                        line += rest
+                        char_ind = 0
+                    console.print(line, soft_wrap=True)
+            console.print("[#FFFF00 on #D0D000]"+"-"*cols+"[/]")
         else:
             print("No search result available!")
         

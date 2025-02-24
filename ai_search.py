@@ -145,12 +145,8 @@ class HuggingfaceEmbeddings():
         if len(vect) > 1:
             self.log.warning("Result contains more than one vector, ignoring additional ones")
         search_vect:torch.Tensor = vect[0]
-        # print(search_vect)
-        # print(self.embeddings_matrix)
-        # print(f"{self.embeddings_matrix.shape} x {search_vect.shape}")
         simil = enumerate(torch.matmul(self.embeddings_matrix, search_vect).cpu().numpy().tolist())  # type:ignore
         sorted_simil:list[tuple[int, float]] = sorted(simil, key=lambda x: x[1], reverse=True)  # type:ignore
-        # print(sorted_simil[:10])
         return sorted_simil, search_vect
 
     def get_chunk(self, text: str, index: int, chunk_size: int=2048, chunk_overlap:int=0) -> str:
@@ -203,7 +199,7 @@ class HuggingfaceEmbeddings():
                         rel_path = "~" + full_path[len(home_path):]
                     else:
                         rel_path = full_path
-                    desc = lib_prefix + full_path[len(self.repository_path):]
+                    desc = lib_prefix + full_path[len(source_path):]
                     self.log.info(f"Adding: {rel_path} as {desc}")
                     if desc in update_debris:
                         update_debris.remove(desc)
@@ -332,11 +328,8 @@ class HuggingfaceEmbeddings():
             clr.append(text[i0:i1])
         if clr == []:
             clr = [text]
-        print(clr)
-        print(f"Yellow embeds: {len(clr)}, context={context}, context_steps={context_steps}")
         embs = self.embed(clr, append=False)
         yellow_vect: np.typing.NDArray[np.float32] = torch.matmul(embs, search_embeddings).cpu().numpy()  # type: ignore
-        print(yellow_vect.shape)
         return yellow_vect
 
     def search(self, search_text:str, max_results:int=2, chunk_size:int=2048, chunk_overlap:int=1024, yellow_liner:bool=False, context:int=16, context_steps:int=4):
@@ -350,11 +343,7 @@ class HuggingfaceEmbeddings():
             for desc in self.texts:
                 entry = self.texts[desc]
                 if idx >= entry['emb_ten_idx'] and idx < entry['emb_ten_idx'] + entry['emb_ten_size']:
-                    print(f"{desc} {cosine}")
-                    # print(f"{entry['text']}")
-                    # print(f"chunk_ind: {idx - entry['emb_ten_idx']}")
                     chunk = self.get_chunk(entry['text'], idx - entry['emb_ten_idx'], chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-                    # print(f"chunk: {chunk}")
                     if yellow_liner is True:
                         yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
                     else:
