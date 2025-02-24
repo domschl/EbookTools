@@ -170,19 +170,24 @@ class HuggingfaceEmbeddings():
             if format not in known_formats:
                 self.log.error(f"Format {format} is not supported, removing")
                 formats.remove(format)
+        cur_idx:int = 0
+        if self.embeddings_matrix is not None:
+            cur_idx = self.embeddings_matrix.shape[0]
         for desc in self.texts:
             if desc.startswith(lib_prefix):
                 update_debris.append(desc)
+        for desc in self.new_texts:
+            entry_idx = self.new_texts[desc]['emb_ten_idx'] + self.new_texts[desc]['emb_ten_size']
+            if entry_idx > cur_idx:
+                cur_idx = entry_idx
         if 'pdf' in formats:
             pdf_cache = os.path.join(self.repository_path, 'PDF_Cache')
             os.makedirs(pdf_cache, exist_ok=True)
         else:
             pdf_cache = None
         home_path = os.path.expanduser("~")
-        cur_idx:int = 0
+
         count:int = 0
-        if self.embeddings_matrix is not None:
-            cur_idx = self.embeddings_matrix.shape[0]
         self.log.info(f"Adding texts from {source_folder} of formats {formats}")
         for root, _dir, files in os.walk(source_path):
             for file in files:
@@ -258,6 +263,7 @@ class HuggingfaceEmbeddings():
                         'emb_ten_idx': cur_idx,
                         'emb_ten_size': len(new_chunks)
                     }
+                    self.log.info(f"Adding {desc} at index {cur_idx}")
                     count += 1
                     cur_idx += len(new_chunks)
                 else:
@@ -305,10 +311,14 @@ class HuggingfaceEmbeddings():
             entry = self.texts[desc]
             idxs.append((entry['emb_ten_idx'], entry['emb_ten_size']))
         last_idx = 0
-        idxs = sorted(idxs, key=lambda x: x[0])
-        for idx in idxs:
+        idxs_new = sorted(idxs, key=lambda x: x[0])
+        for i, idxi in enumerate(idxs):
+            if idxs_new[i] != idxi:
+                self.log.warning(f"At index {i}, reordering happened: {idxs_new[i]} {idxs[i]}")
+        idxs = idxs_new
+        for i, idx in enumerate(idxs):
             if idx[0] != last_idx:
-                self.log.error(f"Algorithm failure at debris removal: {idx[0]} != {last_idx}")
+                self.log.error(f"Algorithm failure at index {i} debris removal: {idx[0]} != {last_idx}")
                 exit(1)
             last_idx += idx[1]
         if self.embeddings_matrix is None:
