@@ -94,6 +94,11 @@ class HuggingfaceEmbeddings():
             self.log.warning("No embeddings available!")
         return ret
 
+    def save_pdf_cache_state(self):
+        pdf_cache_index = os.path.join(self.pdf_cache_path, "pdf_index.json")
+        with open(pdf_cache_index, 'w') as f:
+            json.dump(self.pdf_index, f)
+
     def save_state(self) -> bool:
         if self.repository_path is None:
             self.log.error("Cannot save state, since repository_path does not exist!")
@@ -104,9 +109,7 @@ class HuggingfaceEmbeddings():
             json.dump(self.texts, f)
         if os.path.isdir(self.pdf_cache_path) is False:
             os.makedirs(self.pdf_cache_path, exist_ok=True)
-        pdf_cache_index = os.path.join(self.pdf_cache_path, "pdf_index.json")
-        with open(pdf_cache_index, 'w') as f:
-            json.dump(self.pdf_index, f)
+        self.save_pdf_cache_state()
         if os.path.isdir(self.embeddings_path) is False:
             os.makedirs(self.embeddings_path, exist_ok=True)
         embeddings_tensor_file = os.path.join(self.embeddings_path, f"embeddings_{model_san}.pt")
@@ -254,6 +257,7 @@ class HuggingfaceEmbeddings():
                                     with open(pdf_ind['filename'], 'w') as f:
                                         f.write(text)
                                     self.pdf_index[desc] = pdf_ind
+                                    self.save_pdf_cache_state()
                                     self.log.info(f"Added {desc} to PDF cache, size: {len(self.pdf_index.keys())}")
                     else:  # Text format
                         with open(full_path, 'r') as f:
