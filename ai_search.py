@@ -151,13 +151,13 @@ class HuggingfaceEmbeddings():
         sorted_simil:list[tuple[int, float]] = sorted(simil, key=lambda x: x[1], reverse=True)  # type:ignore
         return sorted_simil, search_vect
 
-    def get_chunk(self, text: str, index: int, chunk_size: int=2048, chunk_overlap:int=0) -> str:
+    def get_chunk(self, text: str, index: int, chunk_size:int, chunk_overlap:int) -> str:
         chunk = text[index*(chunk_size-chunk_overlap):(index+1)*(chunk_size-chunk_overlap)]
         return chunk
 
-    def get_chunks(self, text:str, chunk_size:int=2048, chunk_overlap:int=0) -> list[str]:
+    def get_chunks(self, text:str, chunk_size:int, chunk_overlap:int) -> list[str]:
         chunks = (len(text) - 1) // (chunk_size - chunk_overlap) + 1 
-        text_chunks = [self.get_chunk(text, i) for i in range(chunks) ]
+        text_chunks = [self.get_chunk(text, i, chunk_size=chunk_size, chunk_overlap=chunk_overlap) for i in range(chunks) ]
         return text_chunks
             
     def add_texts(self, source_folder:str, library_name:str, formats:list[str] = ["pdf", "txt", "md"], use_pdf_cache:bool=True, chunk_size:int=2048, chunk_overlap:int=1024):
@@ -370,7 +370,11 @@ class HuggingfaceEmbeddings():
             for desc in self.texts:
                 entry = self.texts[desc]
                 if idx >= entry['emb_ten_idx'] and idx < entry['emb_ten_idx'] + entry['emb_ten_size']:
-                    chunk = self.get_chunk(entry['text'], idx - entry['emb_ten_idx'], chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    print(f"{desc}: {cosine}")
+                    chunks: list[str] = []
+                    for i in range(3):
+                        chunks.append(self.get_chunk(entry['text'], idx - entry['emb_ten_idx']-1+i, chunk_size=chunk_size, chunk_overlap=chunk_overlap))
+                    chunk = '\n'.join(chunks)
                     if yellow_liner is True:
                         yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
                     else:
@@ -378,7 +382,7 @@ class HuggingfaceEmbeddings():
                     sres:SearchResult = {
                         'cosine': cosine,
                         'index': idx,
-                        'offset': entry['emb_ten_idx'] - idx,
+                        'offset': idx - entry['emb_ten_idx'],
                         'desc': desc,
                         'chunk': chunk,  
                         'text': entry['text'],

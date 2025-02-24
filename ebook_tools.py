@@ -390,8 +390,8 @@ if __name__ == "__main__":
             logger.info("Loading embeddings...")
             emb = HuggingfaceEmbeddings(repository = book_text_lib_root, embeddings_model_name=model_config['model_name'])
             emb.load_state()
-        max_results = 2
-        context = 32
+        max_results = 5
+        context = 16
         context_steps = 4
         yellow = True
         cols, _ = os.get_terminal_size()
