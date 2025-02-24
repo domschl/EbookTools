@@ -261,7 +261,6 @@ dependencies = [
     { name = "jupyterlab" },
     { name = "lxml" },
     { name = "lxml-stubs" },
-    { name = "megablocks" },
     { name = "numpy" },
     { name = "ollama" },
     { name = "pillow" },
@@ -284,7 +283,6 @@ requires-dist = [
     { name = "jupyterlab", specifier = ">=4.3.5" },
     { name = "lxml", specifier = ">=5.3.1" },
     { name = "lxml-stubs", specifier = ">=0.5.1" },
-    { name = "megablocks", git = "https://github.com/nomic-ai/megablocks.git" },
     { name = "numpy", specifier = ">=2.2.3" },
     { name = "ollama", specifier = ">=0.4.7" },
     { name = "pillow", specifier = ">=11.1.0" },
@@ -823,15 +821,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba", size = 8729 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979 },
-]
-
-[[package]]
-name = "megablocks"
-version = "0.5.1"
-source = { git = "https://github.com/nomic-ai/megablocks.git#4806f68091896fe4288c90d6bd7969188f291bad" }
-dependencies = [
-    { name = "stanford-stk" },
-    { name = "triton" },
 ]
 
 [[package]]
@@ -1716,16 +1705,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/28/e3/55dcc2cfbc3ca9c29
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/7b/ce1eafaf1a76852e2ec9b22edecf1daa58175c090266e9f6c64afcd81d91/stack_data-0.6.3-py3-none-any.whl", hash = "sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695", size = 24521 },
 ]
-
-[[package]]
-name = "stanford-stk"
-version = "0.7.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "torch" },
-    { name = "triton" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f6/ae/eeb2c3bd17fa94ed36530d53a8c06acf2f75a14f8f12aa701f6cf2504203/stanford_stk-0.7.1.tar.gz", hash = "sha256:fc46140c2572ee9c008b2ac67ee6656f63f49c1074da8aea0923fa8290702871", size = 17407 }
 
 [[package]]
 name = "sympy"

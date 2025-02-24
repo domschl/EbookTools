@@ -57,6 +57,7 @@ class HuggingfaceEmbeddings():
             self.engine = None
 
     def load_state(self) -> bool:
+        ret: bool = True
         if self.repository_path is None:
             self.log.error("Cannot load state, since repository_path does not exist!")
             return False
@@ -64,9 +65,10 @@ class HuggingfaceEmbeddings():
         state_file = os.path.join(self.repository_path, f"texts_library_{model_san}.json")
         if os.path.exists(state_file) is False:
             self.log.error(f"Can't open {state_file}")
-            return False
-        with open(state_file, 'r') as f:
-            self.texts = json.load(f)
+            ret = False
+        else:
+            with open(state_file, 'r') as f:
+                self.texts = json.load(f)
         os.makedirs(self.pdf_cache_path, exist_ok=True)
         pdf_cache_index = os.path.join(self.pdf_cache_path, "pdf_index.json")
         if os.path.exists(pdf_cache_index):
@@ -90,7 +92,7 @@ class HuggingfaceEmbeddings():
                 exit(1)
         else:
             self.log.warning("No embeddings available!")
-        return True
+        return ret
 
     def save_state(self) -> bool:
         if self.repository_path is None:
@@ -222,7 +224,14 @@ class HuggingfaceEmbeddings():
                                     except Exception as e:
                                         self.log.warning(f"Failed to read PDF cache file for {desc}: {e}")
                                         del self.pdf_index[desc]
+                                        text = None
+                                else:
+                                    self.log.info(f"PDF file {full_path} has changed, re-importing")
+                                    del self.pdf_index[desc]
+                            else:
+                                self.log.info(f"{desc} is not in PDF cache (size: {len(self.pdf_index.keys())})")
                         if text is None:
+                            self.log.info(f"Importing and caching PDF {full_path}")
                             doc = pymupdf.open(full_path)
                             text = ""
                             for page in doc:
@@ -245,6 +254,7 @@ class HuggingfaceEmbeddings():
                                     with open(pdf_ind['filename'], 'w') as f:
                                         f.write(text)
                                     self.pdf_index[desc] = pdf_ind
+                                    self.log.info(f"Added {desc} to PDF cache, size: {len(self.pdf_index.keys())}")
                     else:  # Text format
                         with open(full_path, 'r') as f:
                             text = f.read()

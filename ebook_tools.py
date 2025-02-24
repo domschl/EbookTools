@@ -370,7 +370,6 @@ if __name__ == "__main__":
         if emb is None:
              emb = HuggingfaceEmbeddings(repository = book_text_lib_root, embeddings_model_name=model_config['model_name'])
              emb.load_state()
-        logger.info(f"Loading text library: {book_text_lib_texts}")
         book_cnt = 0
         # book_cnt += emb.add_texts(library_name="TempRecip", source_folder="~/Temp/Rezepte", formats=["md"])
         # logging.info(f"Book_cnt: {book_cnt}, self.texts is {len(emb.texts.keys())}")
