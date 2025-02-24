@@ -373,7 +373,7 @@ if __name__ == "__main__":
         logger.info(f"Loading text library: {book_text_lib_texts}")
         book_cnt = 0
         # book_cnt += emb.add_texts(library_name="CalNotes", source_folder=notes_path, formats=["md"])
-        book_cnt += emb.add_texts(library_name="CalNotes", source_folder="~/Temp/Rezepte", formats=["md"])
+        book_cnt += emb.add_texts(library_name="CalNotes", source_folder="~/Temp", formats=["md", "pdf", "txt"])
         # book_cnt += emb.add_texts(library_name="CalText", source_folder=book_text_lib_texts, formats=["txt"])
         # logger.info(f"{book_cnt} text books+notes loaded, loading PDFs...")
         # book_cnt += emb.add_texts(library_name="CalPdf", source_folder=meta_path, formats=["pdf"])

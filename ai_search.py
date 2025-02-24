@@ -176,6 +176,8 @@ class HuggingfaceEmbeddings():
         if 'pdf' in formats:
             pdf_cache = os.path.join(self.repository_path, 'PDF_Cache')
             os.makedirs(pdf_cache, exist_ok=True)
+        else:
+            pdf_cache = None
         home_path = os.path.expanduser("~")
         cur_idx:int = 0
         count:int = 0
@@ -209,8 +211,12 @@ class HuggingfaceEmbeddings():
                         if use_pdf_cache is True:
                             if desc in self.pdf_index:
                                 if os.path.getsize(full_path) == self.pdf_index[desc]['file_size']:
-                                    with open(self.pdf_index[desc]['filename'], 'r') as f:
-                                        text = f.read()
+                                    try:
+                                        with open(self.pdf_index[desc]['filename'], 'r') as f:
+                                            text = f.read()
+                                    except Exception as e:
+                                        self.log.warning(f"Failed to read PDF cache file for {desc}: {e}")
+                                        del self.pdf_index[desc]
                         if text is None:
                             doc = pymupdf.open(full_path)
                             text = ""
@@ -226,13 +232,14 @@ class HuggingfaceEmbeddings():
                             if text == "":
                                 text = None
                             else:
-                                pdf_ind: PDFIndex = {
-                                    'filename': str(uuid.uuid4()),
-                                    'file_size': os.path.getsize(full_path)
-                                }
-                                with open(pdf_ind['filename'], 'w') as f:
-                                    f.write(text)
-                                self.pdf_index[desc] = pdf_ind
+                                if pdf_cache is not None:
+                                    pdf_ind: PDFIndex = {
+                                        'filename': os.path.join(pdf_cache, str(uuid.uuid4())),
+                                        'file_size': os.path.getsize(full_path)
+                                    }
+                                    with open(pdf_ind['filename'], 'w') as f:
+                                        f.write(text)
+                                    self.pdf_index[desc] = pdf_ind
                     else:  # Text format
                         with open(full_path, 'r') as f:
                             text = f.read()
