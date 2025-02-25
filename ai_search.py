@@ -50,6 +50,12 @@ class HuggingfaceEmbeddings():
         self.debris:list[str] = []
         try:
             self.engine: SentenceTransformer | None = SentenceTransformer(embeddings_model_name, trust_remote_code=True)
+            if torch.cuda.is_available():
+                self.engine = self.engine.to(torch.device('cuda'))
+            elif torch.backends.mps.is_available():
+                self.engine = self.engine.to(torch.device('mps'))
+            else:
+                self.engine = self.engine.to(torch.device('cpu'))
             self.model_available = True
         except Exception as e:
             self.log.error(f"Huggingface engine {embeddings_model_name} not available: {e}")
@@ -78,8 +84,14 @@ class HuggingfaceEmbeddings():
             self.pdf_index = {}
         os.makedirs(self.embeddings_path, exist_ok=True)
         embeddings_tensor_file = os.path.join(self.embeddings_path, f"embeddings_{model_san}.pt")
+        if torch.cuda.is_available():
+            map_location = torch.device('cuda')
+        elif torch.backends.mps.is_available():
+            map_location = torch.device('mps')
+        else:
+            map_location = torch.device('cpu')
         if os.path.exists(embeddings_tensor_file):
-            self.embeddings_matrix = torch.load(embeddings_tensor_file)  # type: ignore
+            self.embeddings_matrix = torch.load(embeddings_tensor_file, map_location=map_location)  # type: ignore
         else:
             self.embeddings_matrix = None
         if self.embeddings_matrix is not None:
@@ -363,7 +375,7 @@ class HuggingfaceEmbeddings():
         yellow_vect: np.typing.NDArray[np.float32] = torch.matmul(embs, search_embeddings).cpu().numpy()  # type: ignore
         return yellow_vect
 
-    def search(self, search_text:str, max_results:int=2, chunk_size:int=2048, chunk_overlap:int=1024, yellow_liner:bool=False, context:int=16, context_steps:int=4):
+    def search(self, search_text:str, max_results:int=2, chunk_size:int=2048, chunk_overlap:int=1024, yellow_liner:bool=False, context:int=16, context_steps:int=4, compress:str="none"):
         sorted_simil_all, search_embeddings = self.search_vect(search_text)
         sorted_simil = sorted_simil_all[:max_results]
         search_results: list[SearchResult] = []
@@ -375,10 +387,23 @@ class HuggingfaceEmbeddings():
                 entry = self.texts[desc]
                 if idx >= entry['emb_ten_idx'] and idx < entry['emb_ten_idx'] + entry['emb_ten_size']:
                     print(f"{desc}: {cosine}")
-                    chunks: list[str] = []
-                    for i in range(3):
-                        chunks.append(self.get_chunk(entry['text'], idx - entry['emb_ten_idx']-1+i, chunk_size=chunk_size, chunk_overlap=chunk_overlap))
-                    chunk = '\n'.join(chunks)
+                    chunk:str = self.get_chunk(entry['text'], idx - entry['emb_ten_idx'], chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    if compress == "light":
+                        new_chunk = None
+                        old_chunk = chunk
+                        while new_chunk != old_chunk:
+                            if new_chunk is not None:
+                                old_chunk = new_chunk
+                            new_chunk = old_chunk.replace("  ", " ").replace("\n\n", "\n")
+                        chunk = new_chunk
+                    elif compress == "full":
+                        old_chunk = chunk
+                        new_chunk = None
+                        while new_chunk != chunk:
+                            if new_chunk is not None:
+                                old_chunk = new_chunk
+                            new_chunk = old_chunk.replace("  ", " ").replace("\n\n", " ")
+                        chunk = new_chunk
                     if yellow_liner is True:
                         yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
                     else:

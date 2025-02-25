@@ -395,7 +395,7 @@ if __name__ == "__main__":
         context_steps = 4
         yellow = True
         cols, _ = os.get_terminal_size()
-        results: list[SearchResult] | None = emb.search(search_text=search_spec, yellow_liner=yellow, context=context, context_steps=context_steps, max_results=max_results)
+        results: list[SearchResult] | None = emb.search(search_text=search_spec, yellow_liner=yellow, context=context, context_steps=context_steps, max_results=max_results, compress="light")
         print()
         print()
         console = Console()
@@ -430,9 +430,9 @@ if __name__ == "__main__":
                     title_text += " " * (cols - len(title_text))
                 else:
                     title_text = title_text[:cols]
-                console.print("[#FFFF00 on #D0D000]"+"="*cols+"[/]")
-                console.print("[black on #FFFF00]"+title_text+"[/]")
-                console.print("[#FFFF00 on #E0E000]"+"-"*cols+"[/]")
+                console.print("[#FFFFFF on #D0D0D0]"+"-"*cols+"[/]")
+                console.print("[black on #E0E0E0]"+title_text+"[/]")
+                console.print("[#FFFFFF on #E0E0E0]"+"-"*cols+"[/]")
                 # sys.stdout.flush()
                 # print(best_chunk)
                 # print(y_min, y_max)
@@ -465,7 +465,7 @@ if __name__ == "__main__":
                         line += rest
                         char_ind = 0
                     console.print(line, soft_wrap=True)
-            console.print("[#FFFF00 on #D0D000]"+"-"*cols+"[/]")
+            console.print("[#FFFFFF on #E0E0E0]"+"-"*cols+"[/]")
         else:
             print("No search result available!")
         
