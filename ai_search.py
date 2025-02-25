@@ -28,13 +28,24 @@ class PDFIndex(TypedDict):
     filename: str
     file_size: int
 
+class RepoState(TypedDict):
+    embeddings_model_name: str
+    chunk_size: int
+    chunk_overlap: int
+    text_entries: dict[str, EmbeddingsEntry]
 
 # "nomic-ai/nomic-embed-text-v2-moe"
 class HuggingfaceEmbeddings():
-    def __init__(self, embeddings_model_name:str, repository:str):
+    def __init__(self, embeddings_model_name:str, repository:str, chunk_size:int, chunk_overlap:int) -> None:
         self.log: logging.Logger = logging.getLogger("HuggingfaceEmbedder")
         self.embeddings_matrix: torch.Tensor | None = None
         self.model_name: str = embeddings_model_name
+        self.chunk_size: int = chunk_size
+        if chunk_overlap >= chunk_size:
+            self.log.error(f"chunk_overap={chunk_overlap} must be smaller than chunk_size={chunk_size}, using default 1/3 of chunk_size")
+            self.chunk_overlap = chunk_size // 3
+        else:
+            self.chunk_overlap = chunk_overlap
         if os.path.isdir(repository) is False:
             self.log.error(f"Repository {repository} does not exist!")
             self.repository_path = None
@@ -68,13 +79,23 @@ class HuggingfaceEmbeddings():
             self.log.error("Cannot load state, since repository_path does not exist!")
             return False
         model_san = self.model_name.replace('/', '-')
-        state_file = os.path.join(self.repository_path, f"texts_library_{model_san}.json")
+        state_file = os.path.join(self.repository_path, f"texts_library_{model_san}_{self.chunk_size}|{self.chunk_overlap}.json")
         if os.path.exists(state_file) is False:
             self.log.error(f"Can't open {state_file}")
             ret = False
         else:
-            with open(state_file, 'r') as f:
-                self.texts = json.load(f)
+            repo_state: RepoState
+            try:
+                with open(state_file, 'r') as f:
+                    repo_state = json.load(f)
+            except Exception as e:
+                self.log.error(f"Failed to load embeddings repository state, can't continue: {e}")
+                exit(1)
+            if repo_state['chunk_overlap'] != self.chunk_overlap or repo_state['chunk_size'] != self.chunk_size or self.model_name != repo_state['embeddings_model_name']:
+                self.log.error("State-file is incompatible with model_name, or chunk_size, or chunk_overlap provided with initialization, can't continue")
+                exit(1)
+            self.texts = repo_state['text_entries']
+
         os.makedirs(self.pdf_cache_path, exist_ok=True)
         pdf_cache_index = os.path.join(self.pdf_cache_path, "pdf_index.json")
         if os.path.exists(pdf_cache_index):
@@ -116,9 +137,15 @@ class HuggingfaceEmbeddings():
             self.log.error("Cannot save state, since repository_path does not exist!")
             return False
         model_san = self.model_name.replace('/', '-')
-        state_file = os.path.join(self.repository_path, f"texts_library_{model_san}.json")
+        state_file = os.path.join(self.repository_path, f"texts_library_{model_san}_{self.chunk_size}|{self.chunk_overlap}.json")
+        repo_state = {
+            'embeddings_model_name': self.model_name,
+            'chunk_size': self.chunk_size,
+            'chunk_overlap': self.chunk_overlap,
+            'text_entries': self.texts
+        }
         with open(state_file, 'w') as f:
-            json.dump(self.texts, f)
+            json.dump(repo_state, f)
         if os.path.isdir(self.pdf_cache_path) is False:
             os.makedirs(self.pdf_cache_path, exist_ok=True)
         self.save_pdf_cache_state()
@@ -166,17 +193,17 @@ class HuggingfaceEmbeddings():
         sorted_simil:list[tuple[int, float]] = sorted(simil, key=lambda x: x[1], reverse=True)  # type:ignore
         return sorted_simil, search_vect
 
-    def get_chunk(self, text: str, index: int, chunk_size:int, chunk_overlap:int) -> str:
-        chunk_start = index*(chunk_size-chunk_overlap) 
-        chunk = text[chunk_start : chunk_start + chunk_size] # index*(chunk_size-chunk_overlap):(index+1)*(chunk_size-chunk_overlap)]
+    def get_chunk(self, text: str, index: int) -> str:
+        chunk_start = index*(self.chunk_size-self.chunk_overlap) 
+        chunk = text[chunk_start : chunk_start + self.chunk_size] # index*(chunk_size-chunk_overlap):(index+1)*(chunk_size-chunk_overlap)]
         return chunk
 
-    def get_chunks(self, text:str, chunk_size:int, chunk_overlap:int) -> list[str]:
-        chunks = (len(text) - 1) // (chunk_size - chunk_overlap) + 1 
-        text_chunks = [self.get_chunk(text, i, chunk_size=chunk_size, chunk_overlap=chunk_overlap) for i in range(chunks) ]
+    def get_chunks(self, text:str) -> list[str]:
+        chunks = (len(text) - 1) // (self.chunk_size - self.chunk_overlap) + 1 
+        text_chunks = [self.get_chunk(text, i) for i in range(chunks) ]
         return text_chunks
             
-    def add_texts(self, source_folder:str, library_name:str, formats:list[str] = ["pdf", "txt", "md"], use_pdf_cache:bool=True, chunk_size:int=2048, chunk_overlap:int=1024):
+    def add_texts(self, source_folder:str, library_name:str, formats:list[str] = ["pdf", "txt", "md"], use_pdf_cache:bool=True):
         if self.repository_path is None:
             self.log.error("Cannot add texts, since repository path does not exist")
             return 0
@@ -282,7 +309,7 @@ class HuggingfaceEmbeddings():
                             continue
                         else:
                             update_debris.append(desc)  # re-add, changed text
-                    new_chunks = self.get_chunks(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    new_chunks = self.get_chunks(text)
                     self.chunks += new_chunks
                     self.new_texts[desc] = {
                         'filename': rel_path, 
@@ -376,7 +403,7 @@ class HuggingfaceEmbeddings():
         yellow_vect: np.typing.NDArray[np.float32] = torch.matmul(embs, search_embeddings).cpu().numpy()  # type: ignore
         return yellow_vect
 
-    def search(self, search_text:str, max_results:int=2, chunk_size:int=2048, chunk_overlap:int=1024, yellow_liner:bool=False, context:int=16, context_steps:int=4, compress:str="none"):
+    def search(self, search_text:str, max_results:int=2, yellow_liner:bool=False, context:int=16, context_steps:int=4, compress:str="none"):
         sorted_simil_all, search_embeddings = self.search_vect(search_text)
         sorted_simil = sorted_simil_all[:max_results]
         search_results: list[SearchResult] = []
@@ -388,7 +415,7 @@ class HuggingfaceEmbeddings():
                 entry = self.texts[desc]
                 if idx >= entry['emb_ten_idx'] and idx < entry['emb_ten_idx'] + entry['emb_ten_size']:
                     print(f"{desc}: {cosine}")
-                    chunk:str = self.get_chunk(entry['text'], idx - entry['emb_ten_idx'], chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    chunk:str = self.get_chunk(entry['text'], idx - entry['emb_ten_idx'])
                     if compress == "light":
                         new_chunk = chunk
                         old_chunk = None

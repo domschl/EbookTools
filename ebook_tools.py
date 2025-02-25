@@ -368,7 +368,7 @@ if __name__ == "__main__":
         logger.info(f"Processed metadata, ok={m_oks}, errors={m_errs}")
     if do_embed is True:
         if emb is None:
-             emb = HuggingfaceEmbeddings(repository = book_text_lib_root, embeddings_model_name=model_config['model_name'])
+             emb = HuggingfaceEmbeddings(repository = book_text_lib_root, embeddings_model_name=model_config['model_name'], chunk_size=model_config['chunk_size'], chunk_overlap=model_config["chunk_overlap"])
              emb.load_state()
         book_cnt = 0
         # book_cnt += emb.add_texts(library_name="TempRecip", source_folder="~/Temp/Rezepte", formats=["md"])
@@ -388,7 +388,7 @@ if __name__ == "__main__":
             exit(1)
         if emb is None:
             logger.info("Loading embeddings...")
-            emb = HuggingfaceEmbeddings(repository = book_text_lib_root, embeddings_model_name=model_config['model_name'])
+            emb = HuggingfaceEmbeddings(repository = book_text_lib_root, embeddings_model_name=model_config['model_name'], chunk_size=model_config['chunk_size'], chunk_overlap=model_config["chunk_overlap"])
             emb.load_state()
         max_results = 5
         context = 16
