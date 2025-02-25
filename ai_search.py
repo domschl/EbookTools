@@ -167,7 +167,8 @@ class HuggingfaceEmbeddings():
         return sorted_simil, search_vect
 
     def get_chunk(self, text: str, index: int, chunk_size:int, chunk_overlap:int) -> str:
-        chunk = text[index*(chunk_size-chunk_overlap):(index+1)*(chunk_size-chunk_overlap)]
+        chunk_start = index*(chunk_size-chunk_overlap) 
+        chunk = text[chunk_start : chunk_start + chunk_size] # index*(chunk_size-chunk_overlap):(index+1)*(chunk_size-chunk_overlap)]
         return chunk
 
     def get_chunks(self, text:str, chunk_size:int, chunk_overlap:int) -> list[str]:
@@ -389,19 +390,17 @@ class HuggingfaceEmbeddings():
                     print(f"{desc}: {cosine}")
                     chunk:str = self.get_chunk(entry['text'], idx - entry['emb_ten_idx'], chunk_size=chunk_size, chunk_overlap=chunk_overlap)
                     if compress == "light":
-                        new_chunk = None
-                        old_chunk = chunk
+                        new_chunk = chunk
+                        old_chunk = None
                         while new_chunk != old_chunk:
-                            if new_chunk is not None:
-                                old_chunk = new_chunk
+                            old_chunk = new_chunk
                             new_chunk = old_chunk.replace("  ", " ").replace("\n\n", "\n")
                         chunk = new_chunk
                     elif compress == "full":
-                        old_chunk = chunk
-                        new_chunk = None
+                        new_chunk = chunk
+                        old_chunk = None
                         while new_chunk != chunk:
-                            if new_chunk is not None:
-                                old_chunk = new_chunk
+                            old_chunk = new_chunk
                             new_chunk = old_chunk.replace("  ", " ").replace("\n\n", " ")
                         chunk = new_chunk
                     if yellow_liner is True:
