@@ -193,9 +193,22 @@ class HuggingfaceEmbeddings():
         sorted_simil:list[tuple[int, float]] = sorted(simil, key=lambda x: x[1], reverse=True)  # type:ignore
         return sorted_simil, search_vect
 
+    def get_chunk_ptr(self, text: str, index: int) -> int:
+        chunk_ptr = index*(self.chunk_size-self.chunk_overlap)
+        return chunk_ptr
+
     def get_chunk(self, text: str, index: int) -> str:
-        chunk_start = index*(self.chunk_size-self.chunk_overlap) 
-        chunk = text[chunk_start : chunk_start + self.chunk_size] # index*(chunk_size-chunk_overlap):(index+1)*(chunk_size-chunk_overlap)]
+        chunk_start = self.get_chunk_ptr(text, index)
+        chunk = text[chunk_start : chunk_start + self.chunk_size]
+        return chunk
+
+    def get_span_chunk(self, text:str, index: int, count:int):
+        if count < 1:
+            self.log.error(f"Invalid multi_chunk count: {count}")
+            return ""
+        chunk_start = self.get_chunk_ptr(text, index)
+        offset = self.chunk_size - self.chunk_overlap
+        chunk = text[chunk_start : chunk_start + self.chunk_size+offset * (count-1)]
         return chunk
 
     def get_chunks(self, text:str) -> list[str]:
@@ -407,6 +420,7 @@ class HuggingfaceEmbeddings():
         sorted_simil_all, search_embeddings = self.search_vect(search_text)
         sorted_simil = sorted_simil_all[:max_results]
         search_results: list[SearchResult] = []
+        resolved_list: list[tuple[str, int, int, float, EmbeddingsEntry]] = []
         yellow_liner_weights: np.typing.NDArray[np.float32] | None
         for result in sorted_simil:
             idx = result[0]
@@ -415,35 +429,51 @@ class HuggingfaceEmbeddings():
                 entry = self.texts[desc]
                 if idx >= entry['emb_ten_idx'] and idx < entry['emb_ten_idx'] + entry['emb_ten_size']:
                     print(f"{desc}: {cosine}")
-                    chunk:str = self.get_chunk(entry['text'], idx - entry['emb_ten_idx'])
-                    if compress == "light":
-                        new_chunk = chunk
-                        old_chunk = None
-                        while new_chunk != old_chunk:
-                            old_chunk = new_chunk
-                            new_chunk = old_chunk.replace("  ", " ").replace("\n\n", "\n")
-                        chunk = new_chunk
-                    elif compress == "full":
-                        new_chunk = chunk
-                        old_chunk = None
-                        while new_chunk != chunk:
-                            old_chunk = new_chunk
-                            new_chunk = old_chunk.replace("  ", " ").replace("\n\n", " ")
-                        chunk = new_chunk
-                    if yellow_liner is True:
-                        yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
-                    else:
-                        yellow_liner_weights = None
-                    sres:SearchResult = {
-                        'cosine': cosine,
-                        'index': idx,
-                        'offset': idx - entry['emb_ten_idx'],
-                        'desc': desc,
-                        'chunk': chunk,  
-                        'text': entry['text'],
-                        'yellow_liner': yellow_liner_weights
-                    }
-                    search_results.append(sres)
+                    resolved_list.append((desc, idx, 1, cosine, entry))
+        srla = sorted(resolved_list)
+        for ind, sra in reversed(list(enumerate(srla))):
+            if ind+1 == len(srla):
+                continue
+            if sra[0] == srla[ind+1][0]:  # same desc
+                if sra[4]['emb_ten_idx'] + sra[4]['emb_ten_size'] >= srla[ind+1][4]['emb_ten_idx']:  # Overlapping consequtive
+                    del srla[ind+1]
+                    cnt:int = srla[ind][2] + 1
+                    cosine: float = sra[3]
+                    if sra[3] < srla[ind+1][3]:
+                        cosine = srla[ind+1][3]  # get the better score
+                    srla[ind] = (srla[ind][0], srla[ind][1], cnt, cosine, srla[ind][4])
+                    self.log.info(f"Merged two consequtive search postions into a span-chunk for {sra[0]}")
+        for sra in srla:
+            desc, idx, count, cosine, entry = sra
+            chunk:str = self.get_span_chunk(entry['text'], idx - entry['emb_ten_idx'], count)
+            if compress == "light":
+                new_chunk = chunk
+                old_chunk = None
+                while new_chunk != old_chunk:
+                    old_chunk = new_chunk
+                    new_chunk = old_chunk.replace("  ", " ").replace("\n\n", "\n")
+                chunk = new_chunk
+            elif compress == "full":
+                new_chunk = chunk
+                old_chunk = None
+                while new_chunk != chunk:
+                    old_chunk = new_chunk
+                    new_chunk = old_chunk.replace("  ", " ").replace("\n\n", " ")
+                chunk = new_chunk
+            if yellow_liner is True:
+                yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
+            else:
+                yellow_liner_weights = None
+            sres:SearchResult = {
+                'cosine': cosine,
+                'index': idx,
+                'offset': idx - entry['emb_ten_idx'],
+                'desc': desc,
+                'chunk': chunk,  
+                'text': entry['text'],
+                'yellow_liner': yellow_liner_weights
+            }
+            search_results.append(sres)
         return search_results
     
 

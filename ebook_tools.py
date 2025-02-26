@@ -390,7 +390,7 @@ if __name__ == "__main__":
             logger.info("Loading embeddings...")
             emb = HuggingfaceEmbeddings(repository = book_text_lib_root, embeddings_model_name=model_config['model_name'], chunk_size=model_config['chunk_size'], chunk_overlap=model_config["chunk_overlap"])
             emb.load_state()
-        max_results = 5
+        max_results = 15
         context = 16
         context_steps = 4
         yellow = True
