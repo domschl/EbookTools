@@ -266,11 +266,18 @@ class CalibreTools:
                     date: str = str(date_md.text) if date_md is not None else ""
                     # convert to datetime, add utc timezone
                     if date != "":
-                        pub_date = (
-                            datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S%z")
-                            .replace(tzinfo=timezone.utc)
-                            .isoformat()
-                        )
+                        if '.' in date:                               
+                            pub_date = (
+                                datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S.%f%z")
+                                .replace(tzinfo=timezone.utc)
+                                .isoformat()
+                            )
+                        else:
+                            pub_date = (
+                                datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S%z")
+                                .replace(tzinfo=timezone.utc)
+                                .isoformat()
+                            )
 
                     series: str = ""
                     date_added: str = ""

@@ -395,7 +395,7 @@ if __name__ == "__main__":
         context_steps = 4
         yellow = True
         cols, _ = os.get_terminal_size()
-        results: list[SearchResult] | None = emb.search(search_text=search_spec, yellow_liner=yellow, context=context, context_steps=context_steps, max_results=max_results, compress="light")
+        results: list[SearchResult] | None = emb.search(search_text=search_spec, yellow_liner=yellow, context=context, context_steps=context_steps, max_results=max_results, compress="full")
         print()
         print()
         console = Console()
