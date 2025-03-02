@@ -439,7 +439,7 @@ class HuggingfaceEmbeddings():
                     del srla[ind+1]
                     cnt:int = srla[ind][2] + 1
                     cosine: float = sra[3]
-                    if sra[3] < srla[ind+1][3]:
+                    if ind+1 < len(srla) and sra[3] < srla[ind+1][3]:
                         cosine = srla[ind+1][3]  # get the better score
                     srla[ind] = (srla[ind][0], srla[ind][1], cnt, cosine, srla[ind][4])
                     self.log.info(f"Merged two consequtive search postions into a span-chunk for {sra[0]}")
