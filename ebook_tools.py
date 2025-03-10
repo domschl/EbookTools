@@ -214,11 +214,15 @@ if __name__ == "__main__":
     model_config: EmbeddingsModel = {
          "model_name": "nomic-ai/nomic-embed-text-v2-moe",
          "chunk_size": 2048,
-         "chunk_overlap": 1024
+         "chunk_overlap": 2048 // 3
          }
     if os.path.exists(model_file) is True:
          with open(model_file, "r") as f:
               model_config = json.load(f)
+    else:
+        with open(model_file, "w") as f:
+            json.dump(model_config, f)
+            logging.warning(f"Created default model config file: {model_file}")
 
     paths = [calibre_path, kindle_path, meta_path, notes_path, book_text_lib_root]
     for p in paths:

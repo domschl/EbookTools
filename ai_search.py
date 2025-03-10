@@ -43,16 +43,16 @@ class HuggingfaceEmbeddings():
         self.chunk_size: int = chunk_size
         if chunk_overlap >= chunk_size:
             self.log.error(f"chunk_overap={chunk_overlap} must be smaller than chunk_size={chunk_size}, using default 1/3 of chunk_size")
-            self.chunk_overlap = chunk_size // 3
+            self.chunk_overlap: int = chunk_size // 3
         else:
             self.chunk_overlap = chunk_overlap
         if os.path.isdir(repository) is False:
             self.log.error(f"Repository {repository} does not exist!")
-            self.repository_path = None
+            self.repository_path: str | None = None
         else:
             self.repository_path = repository
-            self.pdf_cache_path = os.path.join(self.repository_path, "PDF_Cache")
-            self.embeddings_path = os.path.join(self.repository_path, "embeddings")
+            self.pdf_cache_path: str = os.path.join(self.repository_path, "PDF_Cache")
+            self.embeddings_path: str = os.path.join(self.repository_path, "embeddings")
 
         self.texts:dict[str, EmbeddingsEntry] = {}
         self.new_texts:dict[str, EmbeddingsEntry] = {}
@@ -67,7 +67,7 @@ class HuggingfaceEmbeddings():
                 self.engine = self.engine.to(torch.device('mps'))
             else:
                 self.engine = self.engine.to(torch.device('cpu'))
-            self.model_available = True
+            self.model_available: bool = True
         except Exception as e:
             self.log.error(f"Huggingface engine {embeddings_model_name} not available: {e}")
             self.model_available = False
@@ -75,11 +75,11 @@ class HuggingfaceEmbeddings():
 
     def load_state(self) -> bool:
         ret: bool = True
-        if self.repository_path is None:
-            self.log.error("Cannot load state, since repository_path does not exist!")
+        if os.path.exists(self.embeddings_path) is False:
+            self.log.error(f"Cannot save state, since {self.embeddings_path} does not exist!")
             return False
         model_san = self.model_name.replace('/', '-')
-        state_file = os.path.join(self.repository_path, f"texts_library_{model_san}_{self.chunk_size}|{self.chunk_overlap}.json")
+        state_file = os.path.join(self.embeddings_path, f"texts_library_{model_san}_{self.chunk_size}|{self.chunk_overlap}.json")
         if os.path.exists(state_file) is False:
             self.log.error(f"Can't open {state_file}")
             ret = False
@@ -133,11 +133,11 @@ class HuggingfaceEmbeddings():
             json.dump(self.pdf_index, f)
 
     def save_state(self) -> bool:
-        if self.repository_path is None:
-            self.log.error("Cannot save state, since repository_path does not exist!")
+        if os.path.exists(self.embeddings_path) is False:
+            self.log.error(f"Cannot save state, since {self.embeddings_path} does not exist!")
             return False
         model_san = self.model_name.replace('/', '-')
-        state_file = os.path.join(self.repository_path, f"texts_library_{model_san}_{self.chunk_size}|{self.chunk_overlap}.json")
+        state_file = os.path.join(self.embeddings_path, f"texts_library_{model_san}_{self.chunk_size}|{self.chunk_overlap}.json")
         repo_state = {
             'embeddings_model_name': self.model_name,
             'chunk_size': self.chunk_size,
@@ -478,6 +478,7 @@ class HuggingfaceEmbeddings():
     
 
 model_list = [
+    "EuroBERT/EuroBERT-610m",
   "nomic-embed-text",
   "mxbai-embed-large",
   "bge-m3",
