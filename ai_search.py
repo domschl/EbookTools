@@ -120,9 +120,8 @@ class HuggingfaceEmbeddings():
             for desc in self.texts:
                 sum += self.texts[desc]['emb_ten_size']
             self.log.info(f"Matrix: {self.embeddings_matrix.shape}, chunks: {sum}, texts: {len(self.texts.keys())}")
-            if sum != self.embeddings_matrix.shape[0]:
-                self.log.error("Embeddings-matrix and text chunks have diverged!")
-                exit(1)
+            if sum > self.embeddings_matrix.shape[0]:
+                self.log.warning(f"Embeddings-matrix incomplete! Sum: {sum}, EmbMat: {self.embeddings_matrix.shape}")
         else:
             self.log.warning("No embeddings available!")
         return ret
@@ -156,7 +155,7 @@ class HuggingfaceEmbeddings():
             torch.save(self.embeddings_matrix, embeddings_tensor_file)  # type: ignore
         return True
 
-    def embed(self, text_chunks: list[str], description:str | None=None, append:bool=False):
+    def embed(self, text_chunks: list[str], description:str | None=None, append:bool=False) -> torch.Tensor:
         if self.model_available is False:
             self.log.error("Embeddings model is not available")
             return torch.Tensor([])
@@ -168,15 +167,27 @@ class HuggingfaceEmbeddings():
         self.log.info(f"Encoding {len(text_chunks)} chunks...")
         if len(text_chunks) == 0:
             self.log.error("Cannot encode empty text list!")
-            return torch.tensor([])
-        embeddings: list[torch.Tensor] = self.engine.encode(sentences=text_chunks, show_progress_bar=True, convert_to_numpy=False)  # type: ignore  # API is a mess!
-        emb_matrix = torch.stack(embeddings)  # pyright: ignore[reportUnknownArgumentType]
+            return torch.Tensor([])
+        emb_matrix = torch.Tensor([])
+        sub_chunk_size = 2048
+        sub_chunk_count = (len(text_chunks) - 1) // sub_chunk_size + 1 
+        for i in range(sub_chunk_count):
+            print(f"Sub chunks: {i}/{sub_chunk_count}")
+            sub_chunk = text_chunks[i*sub_chunk_size:(i+1)*sub_chunk_size]
+            embeddings: list[torch.Tensor] = self.engine.encode(sentences=sub_chunk, show_progress_bar=True, convert_to_numpy=False)  # type: ignore  # API is a mess!
+            emb_matrix = torch.stack(embeddings)  # pyright: ignore[reportUnknownArgumentType]
+            if append is True:
+                if self.embeddings_matrix is None:
+                    self.embeddings_matrix = emb_matrix
+                else:
+                    self.embeddings_matrix = torch.cat([self.embeddings_matrix, emb_matrix])
+                del emb_matrix
+                _ = self.save_state()
+
         if append is True:
-            if self.embeddings_matrix is None:
-                self.embeddings_matrix = emb_matrix
-            else:
-                self.embeddings_matrix = torch.cat([self.embeddings_matrix, emb_matrix])
-        return emb_matrix
+            return torch.Tensor([])
+        else:
+            return emb_matrix
 
     def search_vect(self, text:str) -> tuple[list[tuple[int, float]], torch.Tensor]:
         if self.embeddings_matrix is None:
@@ -229,15 +240,17 @@ class HuggingfaceEmbeddings():
                 self.log.error(f"Format {format} is not supported, removing")
                 formats.remove(format)
         cur_idx:int = 0
+        last_mat_idx = cur_idx
         if self.embeddings_matrix is not None:
             cur_idx = self.embeddings_matrix.shape[0]
+            last_mat_idx = cur_idx
         for desc in self.texts:
             if desc.startswith(lib_prefix):
                 update_debris.append(desc)
-        for desc in self.new_texts:
-            entry_idx = self.new_texts[desc]['emb_ten_idx'] + self.new_texts[desc]['emb_ten_size']
-            if entry_idx > cur_idx:
-                cur_idx = entry_idx
+        # for desc in self.new_texts:
+        #     entry_idx = self.new_texts[desc]['emb_ten_idx'] + self.new_texts[desc]['emb_ten_size']
+        #     if entry_idx > cur_idx:
+        #         cur_idx = entry_idx
         if 'pdf' in formats:
             pdf_cache = os.path.join(self.repository_path, 'PDF_Cache')
             os.makedirs(pdf_cache, exist_ok=True)
@@ -308,7 +321,7 @@ class HuggingfaceEmbeddings():
                                         'file_size': os.path.getsize(full_path)
                                     }
                                     with open(pdf_ind['filename'], 'w') as f:
-                                        f.write(text)
+                                        _ = f.write(text)
                                     self.pdf_index[desc] = pdf_ind
                                     self.save_pdf_cache_state()
                                     self.log.info(f"Added {desc} to PDF cache, size: {len(self.pdf_index.keys())}")
@@ -319,18 +332,27 @@ class HuggingfaceEmbeddings():
                         continue
                     if dupe is True:
                         if self.texts[desc]['text'] == text:
-                            continue
+                            if cur_idx < last_mat_idx:
+                                continue
                         else:
                             update_debris.append(desc)  # re-add, changed text
                     new_chunks = self.get_chunks(text)
                     self.chunks += new_chunks
-                    self.new_texts[desc] = {
-                        'filename': rel_path, 
-                        'text': text,
-                        'emb_ten_idx': cur_idx,
-                        'emb_ten_size': len(new_chunks)
-                    }
-                    self.log.info(f"Adding {desc} at index {cur_idx}")
+                    if dupe is False:
+                        self.new_texts[desc] = {
+                            'filename': rel_path, 
+                            'text': text,
+                            'emb_ten_idx': cur_idx,
+                            'emb_ten_size': len(new_chunks)
+                        }
+                        self.log.info(f"Adding {desc} at index {cur_idx}")
+                    else:
+                        entry = self.texts[desc]
+                        self.log.info("Continuing {desc} at index {cur_idx}")
+                        if entry['emb_ten_idx'] != cur_idx:
+                            self.log.error(f"Continuation failed: idx: {entry['emb_ten_idx']} != {cur_idx}")
+                        if entry['emb_ten_size'] != len(new_chunks):
+                            self.log.error(f"Continuation failed: len: {entry['emb_ten_size']} != {len(new_chunks)}")
                     count += 1
                     cur_idx += len(new_chunks)
                 else:
