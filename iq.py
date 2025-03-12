@@ -66,7 +66,7 @@ def parse_cmd(its: IcoTqStore, logger: logging.Logger) -> None:
         except (EOFError, KeyboardInterrupt):
             quit = True
             continue
-        print(f"{len(cmd)}: >{cmd}<")
+        # print(f"{len(cmd)}: >{cmd}<")
         cmd = cmd.strip().replace('  ', ' ')
         if cmd == "" or cmd == 'quit' or cmd == 'exit': 
             quit = True
