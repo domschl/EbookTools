@@ -2,7 +2,13 @@ import logging
 import os
 import json
 import uuid
-from typing import TypedDict, cast
+import time
+import numpy as np
+
+import torch
+from sentence_transformers import SentenceTransformer
+
+from typing import TypedDict, cast, override
 import pymupdf  # pyright: ignore[reportMissingTypeStubs]
 
 
@@ -17,6 +23,9 @@ class IcotqConfig(TypedDict):
     icotq_path: str
     tq_sources: list[TqSource]
     ebook_mirror: str
+    embeddings_model_name: str
+    embeddings_device: str
+    embeddings_model_trust_code: bool
 
 
 class LibEntry(TypedDict):
@@ -24,12 +33,25 @@ class LibEntry(TypedDict):
     filename: str
     desc_filename: str
     text: str
+    embs: dict[str, np.typing.ArrayLike]  # dictionary: model name -> embs
 
 
 class PDFIndex(TypedDict):
     previous_failure: bool
     filename: str
     file_size: int
+
+
+# See: https://huggingface.co/spaces/mteb/leaderboard
+# nomic-ai/nomic-embed-text-v2-moe    
+class EmbeddingsModel(TypedDict):
+    model_hf_name: str
+    model_name: str
+    emb_dim: int
+    max_input_token: int
+    chunk_size: int
+    chunk_overlap: int
+
 
 
 class IcoTqStore:
@@ -40,12 +62,10 @@ class IcoTqStore:
             os.makedirs(config_path)
         self.lib: list[LibEntry] = []
         self.pdf_index:dict[str, PDFIndex] = {}
-        config_file = os.path.join(config_path, "icoqt.json")
+        self.config_file:str = os.path.join(config_path, "icoqt.json")
         self.config:IcotqConfig
-        if os.path.exists(config_file):
-            with open(config_file, 'r') as f:
-                iqc: IcotqConfig = json.load(f)
-                self.config = iqc
+        if os.path.exists(self.config_file):
+            self.load_config()
         else:
             self.config = IcotqConfig({
                 'icotq_path': '~/IcoTqStore',
@@ -62,15 +82,40 @@ class IcoTqStore:
                         'path': '~/Notes',
                         'file_types': ['md']
                     })],
-                'ebook_mirror': '~/MetaLibrary'
+                'ebook_mirror': '~/MetaLibrary',
+                'embeddings_model_name': 'nomic-embed-text-v2-moe',
+                'embeddings_device': 'auto',
+                'embeddings_model_trust_code': True
                 })
-            with open(config_file, 'w') as f:
-                json.dump(self.config,f)
-            self.log.warning(f"Created default configuration at {config_file}, please review!")
+            self.save_config()
+            self.log.warning(f"Created default configuration at {self.config_file}, please review!")
         self.root_path:str = os.path.expanduser(self.config['icotq_path'])
         if os.path.exists(self.root_path) is False:
             os.makedirs(self.root_path)
-            self.log.warning(f"Creating IcoTq storage path at {self.root_path}, all IcoTq data will reside there. Modify {config_file} to chose another location!")
+            self.log.warning(f"Creating IcoTq storage path at {self.root_path}, all IcoTq data will reside there. Modify {self.config_file} to chose another location!")
+        model_list_path = os.path.join(self.root_path, "model_list.json")
+        self.model_list: list[EmbeddingsModel] = []
+        if os.path.exists(model_list_path) is True:
+            with open(model_list_path, 'r') as f:
+                self.model_list = json.load(f)
+        else:
+            self.model_list = [
+                {
+                    'model_hf_name': 'nomic-ai/nomic-embed-text-v2-moe',
+                    'model_name': 'nomic-embed-text-v2-moe',
+                    'emb_dim': 0,
+                    'max_input_token': 0,
+                    'chunk_size': 2048,
+                    'chunk_overlap': 2048 // 3
+                }
+            ]
+            with open(model_list_path, 'w') as f:
+                json.dump(self.model_list, f)
+            self.log.warning(f"Initialized {model_list_path} with default embeddings model list. Please verify.")
+        self.current_model: EmbeddingsModel | None = None
+        self.engine: SentenceTransformer | None = None
+        if self.config['embeddings_model_name'] != "":
+            _ = self.load_model(self.config['embeddings_model_name'], self.config['embeddings_device'], self.config['embeddings_model_trust_code'])
         config_subdirs = ['Texts', 'Embeddings', 'PDFTextCache', 'EpubTextCache']
         for cdir in config_subdirs:
             full_path = os.path.join(self.root_path, cdir)
@@ -93,7 +138,7 @@ class IcoTqStore:
                 valid = False
             if valid is False:
                 self.config['tq_sources'].remove(source)
-                self.log.warning(f"Please fix configuration file {config_file}")
+                self.log.warning(f"Please fix configuration file {self.config_file}")
         self.read_library()
         
     def list_sources(self) -> None:
@@ -123,16 +168,33 @@ class IcoTqStore:
             self.pdf_index = {}
             print("\r", end="", flush=True)
 
+    def load_config(self):
+        with open(self.config_file, 'r') as f:
+            iqc: IcotqConfig = json.load(f)
+            self.config = iqc
+
+    def save_config(self):
+        with open(self.config_file, 'w') as f:
+            json.dump(self.config,f)
+        self.log.info(f"Configuration changes saved to {self.config_file}")
+
     def save_pdf_cache_state(self):
         pdf_cache = os.path.join(self.root_path, "PDFTextCache")
         pdf_cache_index = os.path.join(pdf_cache, "pdf_index.json")
         with open(pdf_cache_index, 'w') as f:
             json.dump(self.pdf_index, f)
 
+    class NumpyEncoder(json.JSONEncoder):
+        @override
+        def default(self, o):  # pyright: ignore[reportMissingParameterType, reportAny]
+            if isinstance(o, np.ndarray):
+                return o.tolist()
+            return super().default(o)  # pyright: ignore[reportAny]
+
     def write_library(self):
         lib_path = os.path.join(self.root_path, "icotq_library.json")
         with open(lib_path, 'w') as f:
-            json.dump(self.lib, f)
+            json.dump(self.lib, f, cls=self.NumpyEncoder)
         self.save_pdf_cache_state()
 
     def get_pdf_text(self, desc:str, full_path:str) -> tuple[str | None, bool]:
@@ -243,7 +305,8 @@ class IcoTqStore:
                                 'source_name': source['name'],
                                 'desc_filename': desc_path,
                                 'filename': full_path,
-                                'text': text
+                                'text': text,
+                                'embs': {}
                             })
                             self.lib.append(entry)
                             lib_changed = True
@@ -251,6 +314,76 @@ class IcoTqStore:
             self.write_library()
             self.log.info("Changed library saved.")
 
-            
+    @staticmethod
+    def get_chunk_ptr(index: int, chunk_size: int, chunk_overlap: int) -> int:
+        chunk_ptr: int = index * (chunk_size - chunk_overlap)
+        return chunk_ptr
 
-    
+    @staticmethod
+    def get_chunk(text: str, index: int, chunk_size: int, chunk_overlap: int ) -> str:
+        chunk_start: int = IcoTqStore.get_chunk_ptr(index, chunk_size, chunk_overlap)
+        chunk = text[chunk_start : chunk_start + chunk_size]
+        return chunk
+
+    @staticmethod
+    def get_span_chunk(text:str, index: int, count:int, chunk_size: int, chunk_overlap: int):
+        if count < 1:
+            return ""
+        chunk_start: int = IcoTqStore.get_chunk_ptr(index, chunk_size, chunk_overlap)
+        offset = chunk_size - chunk_overlap
+        chunk = text[chunk_start : chunk_start + chunk_size+offset * (count-1)]
+        return chunk
+
+    @staticmethod
+    def get_chunks(text:str, chunk_size: int, chunk_overlap: int) -> list[str]:
+        chunks = (len(text) - 1) // (chunk_size - chunk_overlap) + 1 
+        text_chunks = [IcoTqStore.get_chunk(text, i, chunk_size, chunk_overlap) for i in range(chunks) ]
+        return text_chunks
+                
+    def load_model(self, name: str, device:str="auto", trust_remote_code:bool=False) -> bool:
+        self.log.info(f"Loading model {name}...")
+        for model in self.model_list:
+            if model['model_hf_name'] == name or model['model_name'] == name:
+                try:
+                    self.engine = SentenceTransformer(model['model_hf_name'], 
+                                                      trust_remote_code=trust_remote_code)
+                    if device=='auto':
+                        if torch.cuda.is_available():
+                            self.engine = self.engine.to(torch.device('cuda'))
+                        elif torch.backends.mps.is_available():
+                            self.engine = self.engine.to(torch.device('mps'))
+                        else:
+                            self.engine = self.engine.to(torch.device('cpu'))
+                    else:
+                        self.engine = self.engine.to(torch.device(device))
+                    self.current_model = model
+                    self.log.info(f"Model {name} loaded.")
+                    self.config['embeddings_model_name'] = name
+                    self.save_config()
+                    return True
+                except Exception as e:
+                    self.log.error(f"Failed to load model {model}: {e}")
+                    return False
+        self.log.error(f"Model {name} is unknown, not in model list")
+        return False
+
+    def generate_embeddings(self, save_every_sec:int = 180):
+        if self.current_model is None or self.engine is None:
+            self.log.error("No current embeddings model loaded!")
+            return
+        start_time: float = time.time()
+        for ind, entry in enumerate(self.lib):
+            self.log.info(f"Embedding: {ind+1}/{len(self.lib)}")
+            if self.current_model['model_name'] in entry['embs']:
+                continue
+            text_chunks = self.get_chunks(entry['text'], self.current_model['chunk_size'], self.current_model['chunk_overlap'])
+            if len(text_chunks) == 0:
+                self.log.error(f"Cannot encode empty text list at {entry['desc_filename']}")
+                continue
+            self.log.info(f"Encoding {len(text_chunks)} chunks...")
+            embeddings: np.typing.ArrayLike = cast(np.typing.ArrayLike, self.engine.encode(sentences=text_chunks, show_progress_bar=True, convert_to_numpy=True))  # pyright: ignore[reportUnknownMemberType]
+            self.lib[ind]['embs'][self.current_model['model_name']] = embeddings
+            if save_every_sec > 0 and time.time() - start_time > save_every_sec:
+                self.write_library()
+                start_time = time.time()
+        self.write_library()

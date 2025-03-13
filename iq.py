@@ -2,12 +2,16 @@ import logging
 import os
 import argparse
 from argparse import ArgumentParser
-from icotq_store import IcoTqStore, TqSource
+from icotq_store import IcoTqStore
 from typing import cast
 
-def iq_info(its: IcoTqStore, logger:logging.Logger) -> None:
+def iq_info(its: IcoTqStore, _logger:logging.Logger) -> None:
     its.list_sources()
 
+def iq_embed(its: IcoTqStore, logger:logging.Logger):
+    its.generate_embeddings()
+    logger.info("Embeddings generated.")
+    
 def iq_export(its: IcoTqStore, logger:logging.Logger) -> None:
     if 'ebook_mirror' not in its.config:
         logger.error(f"Cannot export, destination 'ebook_mirror' not defined in config")
@@ -18,7 +22,7 @@ def iq_export(its: IcoTqStore, logger:logging.Logger) -> None:
         return
     print(f"Export to {ebook_mirror_path}")
 
-def iq_import(its: IcoTqStore, logger:logging.Logger):
+def iq_import(its: IcoTqStore, _logger:logging.Logger):
     its.import_texts()
 
 def iq_help(parser:argparse.ArgumentParser, valid_actions:list[tuple[str, str]]):
@@ -29,7 +33,11 @@ def iq_help(parser:argparse.ArgumentParser, valid_actions:list[tuple[str, str]])
     print("To exit, simply press Enter at the command prompt, or by 'exit' or 'quit'")
 
 def parse_cmd(its: IcoTqStore, logger: logging.Logger) -> None:
-    valid_actions = [('info', 'Overview of available data and sources'), ('export', 'NOT IMPLEMENTED'), ('import', 'evaluate available sources and cache text information and metadata'), ('help', 'Display usage information')]
+    valid_actions = [('info', 'Overview of available data and sources'), 
+                                            ('export', 'NOT IMPLEMENTED'), 
+                                            ('import', 'evaluate available sources and cache text information and metadata'), 
+                                            ('embed', 'Generate embeddings for currently active model'),
+                                            ('help', 'Display usage information')]
     parser: ArgumentParser = argparse.ArgumentParser(description="IcoTq")
     _ = parser.add_argument(
         "action",
@@ -60,6 +68,8 @@ def parse_cmd(its: IcoTqStore, logger: logging.Logger) -> None:
             iq_import(its, logger)
         if 'help' in actions:
             iq_help(parser, valid_actions)
+        if 'embed' in actions:
+            iq_embed(its, logger)
         if cast(bool, args.non_interactive) is True:
             break
         if first is True:
