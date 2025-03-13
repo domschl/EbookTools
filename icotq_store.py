@@ -18,7 +18,6 @@ class TqSource(TypedDict):
     path: str
     file_types: list[str]
 
-
 class IcotqConfig(TypedDict):
     icotq_path: str
     tq_sources: list[TqSource]
@@ -26,7 +25,6 @@ class IcotqConfig(TypedDict):
     embeddings_model_name: str
     embeddings_device: str
     embeddings_model_trust_code: bool
-
 
 class LibEntry(TypedDict):
     source_name: str
@@ -40,6 +38,14 @@ class PDFIndex(TypedDict):
     filename: str
     file_size: int
 
+class SearchResult(TypedDict):
+    cosine: float
+    index: int
+    offset: int
+    desc: str
+    text: str
+    chunk: str
+    yellow_liner: np.typing.NDArray[np.float32] | None
 
 # See: https://huggingface.co/spaces/mteb/leaderboard
 # nomic-ai/nomic-embed-text-v2-moe    
@@ -52,10 +58,12 @@ class EmbeddingsModel(TypedDict):
     chunk_overlap: int
 
 
-
 class IcoTqStore:
     def __init__(self) -> None:
         self.log:logging.Logger = logging.getLogger("IcoTqStore")
+        # Disable log spam
+        tmp = logging.getLogger("transformers_modules")
+        tmp.setLevel(logging.ERROR)
         config_path = os.path.expanduser("~/.config/icotq")  # Turquoise icosaeder
         if os.path.isdir(config_path) is False:
             os.makedirs(config_path)
@@ -290,7 +298,7 @@ class IcoTqStore:
             changed = True
         return text, changed
 
-    def import_texts(self, max_imports: int|None = 10):
+    def import_texts(self, max_imports: int|None = None):
         if len(self.config['tq_sources']) == 0:
             self.log.error(f"No valid sources defined in config, can't import")
             return
@@ -445,3 +453,110 @@ class IcoTqStore:
                 start_time = time.time()
         self.write_library()
         _ = self.save_tensor()
+
+    def search_vect(self, text:str) -> tuple[list[tuple[int, float]], torch.Tensor]:
+        if self.embeddings_matrix is None or self.engine is None:
+            self.log.error("No embeddings available!")
+            return [], torch.Tensor([])
+        vect: list[torch.Tensor] = self.engine.encode(sentences=[text], show_progress_bar=True, convert_to_numpy=False)   # pyright: ignore[reportUnknownMemberType, reportAssignmentType]
+        if len(vect) == 0:
+            self.log.error("Failed to calculate embedding for search")
+            return [], torch.Tensor([])
+        if len(vect) > 1:
+            self.log.warning("Result contains more than one vector, ignoring additional ones")
+        search_vect:torch.Tensor = vect[0]
+        simil: list[tuple[int, float]] = enumerate(torch.matmul(self.embeddings_matrix, search_vect).cpu().numpy().tolist())  # pyright: ignore[reportUnknownMemberType, reportAssignmentType]
+        sorted_simil:list[tuple[int, float]] = sorted(simil, key=lambda x: x[1], reverse=True)
+        return sorted_simil, search_vect
+
+    def yellow_line_it(self, text: str, search_embeddings: torch.Tensor, context:int=16, context_steps:int=1) -> np.typing.NDArray[np.float32]:
+        if self.embeddings_matrix is None or self.engine is None:
+            self.log.error("No embeddings available at yellow-lining!")
+            return np.array([], dtype=np.float32)
+        clr: list[str] = []
+        for i in range(0, len(text), context_steps):
+            i0 = i - context // 2
+            i1 = i + context // 2
+            if i0 < 0:
+                i1 = i1 - i0
+                i0 = 0
+            if i1 > len(text):
+                i0 = i0 - (i1 - len(text))
+                i1 = len(text)
+            clr.append(text[i0:i1])
+        if clr == []:
+            clr = [text]
+        embeddings: list[torch.Tensor] = self.engine.encode(sentences=clr, show_progress_bar=True, convert_to_numpy=False)  # pyright: ignore[reportUnknownMemberType, reportAssignmentType]
+        emb_matrix = torch.stack(embeddings)
+        yellow_vect: np.typing.NDArray[np.float32] = torch.matmul(emb_matrix, search_embeddings).cpu().numpy()  # pyright: ignore[reportUnknownMemberType]
+        return yellow_vect
+
+    def search(self, search_text:str, max_results:int=2, yellow_liner:bool=False, context:int=16, context_steps:int=4, compress:str="none"):
+        if self.current_model is None:
+            self.log.error("No current model!")
+            res:list[SearchResult] = []
+            return res
+        sorted_simil_all, search_embeddings = self.search_vect(search_text)
+        sorted_simil = sorted_simil_all[:max_results]
+        search_results: list[SearchResult] = []
+        resolved_list: list[tuple[str, int, int, float, LibEntry]] = []
+        yellow_liner_weights: np.typing.NDArray[np.float32] | None
+        for result in sorted_simil:
+            idx = result[0]
+            cosine = result[1]
+            for entry in self.lib:
+                if self.current_model['model_name'] in entry['emb_ptrs']:
+                    start, length = entry['emb_ptrs'][self.current_model['model_name']]
+                    if idx >= start and idx < start + length:
+                        print(f"{entry['desc_filename']}: {cosine}")
+                        resolved_list.append((entry['desc_filename'], idx, 1, cosine, entry))
+        srla = sorted(resolved_list)
+        for ind, sra in reversed(list(enumerate(srla))):
+            if ind+1 == len(srla):
+                continue
+            if sra[0] == srla[ind+1][0]:  # same desc
+                start, length = sra[4]['emb_ptrs'][self.current_model['model_name']]
+                start2, _length2 = srla[ind+1][4]['emb_ptrs'][self.current_model['model_name']]
+                if start + length >= start2:  # Overlapping consequtive
+                # if sra[4]['emb_ten_idx'] + sra[4]['emb_ten_size'] >= srla[ind+1][4]['emb_ten_idx']:  # Overlapping consequtive
+                    del srla[ind+1]
+                    cnt:int = srla[ind][2] + 1
+                    cosine: float = sra[3]
+                    if ind+1 < len(srla) and sra[3] < srla[ind+1][3]:
+                        cosine = srla[ind+1][3]  # get the better score
+                    srla[ind] = (srla[ind][0], srla[ind][1], cnt, cosine, srla[ind][4])
+                    self.log.info(f"Merged two consequtive search postions into a span-chunk for {sra[0]}")
+        for sra in srla:
+            desc, idx, count, cosine, entry = sra
+            start, _length = entry['emb_ptrs'][self.current_model['model_name']]
+            chunk:str = self.get_span_chunk(entry['text'], idx - start, count, self.current_model['chunk_size'], self.current_model['chunk_overlap'])
+            if compress == "light":
+                new_chunk = chunk
+                old_chunk = None
+                while new_chunk != old_chunk:
+                    old_chunk = new_chunk
+                    new_chunk = old_chunk.replace("  ", " ").replace("\n\n", "\n")
+                chunk = new_chunk
+            elif compress == "full":
+                new_chunk = chunk
+                old_chunk = None
+                while new_chunk != chunk:
+                    old_chunk = new_chunk
+                    new_chunk = old_chunk.replace("\n", " ").replace("\r"," ").replace("\t", " ").replace("  ", " ")
+                chunk = new_chunk
+            if yellow_liner is True:
+                yellow_liner_weights = self.yellow_line_it(chunk, search_embeddings, context=context, context_steps=context_steps)
+            else:
+                yellow_liner_weights = None
+            sres:SearchResult = {
+                'cosine': cosine,
+                'index': idx,
+                'offset': idx - start,
+                'desc': desc,
+                'chunk': chunk,  
+                'text': entry['text'],
+                'yellow_liner': yellow_liner_weights
+            }
+            search_results.append(sres)
+        return search_results
+ 
