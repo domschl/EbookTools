@@ -101,19 +101,27 @@ class IcoTqStore:
             print(f"{id:02d} {source['name']}, {source['tqtype']}, {source['path']}, {source['file_types']}")
 
     def read_library(self):
+        print("\rLoading library...", end="", flush=True)
         lib_path = os.path.join(self.root_path, "icotq_library.json")
         if os.path.exists(lib_path) is True:
             with open(lib_path, 'r') as f:
                 self.lib = json.load(f)
+            print("\r", end="", flush=True)
+            self.log.info(f"Library loaded, {len(self.lib)} entries")
         else:
+            print("\r", end="", flush=True)
             self.log.info(f"No current library state at {lib_path}")
         pdf_cache = os.path.join(self.root_path, "PDFTextCache")
         pdf_cache_index = os.path.join(pdf_cache, "pdf_index.json")
+        print("\rLoading PDF cache...", end="", flush=True)
         if os.path.exists(pdf_cache_index):
             with open(pdf_cache_index, 'r') as f:
                 self.pdf_index = json.load(f)
+            print("\r", end="", flush=True)
+            self.log.info(f"PDF text cache loaded, {len(self.pdf_index.keys())} entries")
         else:
             self.pdf_index = {}
+            print("\r", end="", flush=True)
 
     def save_pdf_cache_state(self):
         pdf_cache = os.path.join(self.root_path, "PDFTextCache")

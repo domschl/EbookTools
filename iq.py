@@ -21,21 +21,21 @@ def iq_export(its: IcoTqStore, logger:logging.Logger) -> None:
 def iq_import(its: IcoTqStore, logger:logging.Logger):
     its.import_texts()
 
-def iq_help(parser:argparse.ArgumentParser, valid_actions:list[str]):
+def iq_help(parser:argparse.ArgumentParser, valid_actions:list[tuple[str, str]]):
     parser.print_help()
     print()
     print("Command can either be provided as command-line arguments or at the '> ' prompt.")
-    print("Valid commands are: " + ', '.join(valid_actions))
+    print("Valid commands are: \n" + '\n    '.join([f"{command}: {help}" for command, help in valid_actions]))
     print("To exit, simply press Enter at the command prompt, or by 'exit' or 'quit'")
 
 def parse_cmd(its: IcoTqStore, logger: logging.Logger) -> None:
-    valid_actions = ['info', 'export', 'import', 'help']
+    valid_actions = [('info', 'Overview of available data and sources'), ('export', 'NOT IMPLEMENTED'), ('import', 'evaluate available sources and cache text information and metadata'), ('help', 'Display usage information')]
     parser: ArgumentParser = argparse.ArgumentParser(description="IcoTq")
     _ = parser.add_argument(
         "action",
         nargs="*",
         default="",
-        help="Action: " + ', '.join(valid_actions),
+        help="Actions: " + ','.join([f"'{command}': {help}" for command, help in valid_actions]),
     )
     _ = parser.add_argument(
             "-n",
@@ -45,10 +45,11 @@ def parse_cmd(its: IcoTqStore, logger: logging.Logger) -> None:
         )        
     args = parser.parse_args()
     quit:bool = False
+    first:bool = True
     while quit is False:
         actions: list[str] =  cast(list[str], args.action)
         for action in actions:
-            if action not in valid_actions:
+            if action not in [cmd for cmd, _ in valid_actions]:
                 logger.error(f"Invalid action {action}, valid are: {valid_actions}")
                 exit(1)
         if 'info' in actions:
@@ -61,6 +62,9 @@ def parse_cmd(its: IcoTqStore, logger: logging.Logger) -> None:
             iq_help(parser, valid_actions)
         if cast(bool, args.non_interactive) is True:
             break
+        if first is True:
+            print("Enter 'help' for command summary.")
+            first = False
         try:
             cmd = input("> ")
         except (EOFError, KeyboardInterrupt):
