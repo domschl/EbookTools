@@ -33,8 +33,7 @@ class LibEntry(TypedDict):
     filename: str
     desc_filename: str
     text: str
-    embs: dict[str, np.typing.ArrayLike]  # dictionary: model name -> embs
-
+    emb_ptrs: dict[str, tuple[int, int]]   # model_name -> (emb_ptr, emb_len)
 
 class PDFIndex(TypedDict):
     previous_failure: bool
@@ -114,6 +113,8 @@ class IcoTqStore:
             self.log.warning(f"Initialized {model_list_path} with default embeddings model list. Please verify.")
         self.current_model: EmbeddingsModel | None = None
         self.engine: SentenceTransformer | None = None
+        self.device: str | None = None
+        self.embeddings_matrix: torch.Tensor | None = None
         if self.config['embeddings_model_name'] != "":
             _ = self.load_model(self.config['embeddings_model_name'], self.config['embeddings_device'], self.config['embeddings_model_trust_code'])
         config_subdirs = ['Texts', 'Embeddings', 'PDFTextCache', 'EpubTextCache']
@@ -121,6 +122,7 @@ class IcoTqStore:
             full_path = os.path.join(self.root_path, cdir)
             if os.path.isdir(full_path) is False:
                 os.makedirs(full_path)
+        self.embeddings_path: str = os.path.join(self.root_path, "Embeddings")
         for source in self.config['tq_sources']:
             valid:bool = True
             known_types: list[str] = ['txt', 'epub', 'md', 'pdf']
@@ -140,6 +142,8 @@ class IcoTqStore:
                 self.config['tq_sources'].remove(source)
                 self.log.warning(f"Please fix configuration file {self.config_file}")
         self.read_library()
+        if self.current_model is not None:
+            _ = self.load_tensor()
         
     def list_sources(self) -> None:
         for id, source in enumerate(self.config['tq_sources']):
@@ -184,17 +188,51 @@ class IcoTqStore:
         with open(pdf_cache_index, 'w') as f:
             json.dump(self.pdf_index, f)
 
-    class NumpyEncoder(json.JSONEncoder):
-        @override
-        def default(self, o):  # pyright: ignore[reportMissingParameterType, reportAny]
-            if isinstance(o, np.ndarray):
-                return o.tolist()
-            return super().default(o)  # pyright: ignore[reportAny]
+    def save_tensor(self) -> bool:
+        if self.current_model is None:
+            self.log.error("Can't save embeddings tensor: no current model information available!")
+            return False
+        embeddings_tensor_file = os.path.join(self.embeddings_path, f"embeddings_{self.current_model['model_name']}.pt")
+        if self.embeddings_matrix is not None:
+            try:
+                torch.save(self.embeddings_matrix, embeddings_tensor_file)  # pyright: ignore[reportUnknownMemberType]
+            except Exception as e:
+                self.log.error(f"Failed to save embeddings tensor to {embeddings_tensor_file}: {e}")
+                return False
+            self.log.info(f"Embeddings tensor saved to {embeddings_tensor_file}")
+            return True
+        else:
+            self.log.error("No embeddings available to save")
+            return False
+
+    def load_tensor(self) -> bool:
+        if self.current_model is None or self.device is None:
+            self.log.error("Can't save embeddings tensor: no current model information available!")
+            return False
+        embeddings_tensor_file = os.path.join(self.embeddings_path, f"embeddings_{self.current_model['model_name']}.pt")
+        map_location = torch.device(self.device)
+        if os.path.exists(embeddings_tensor_file):
+            self.embeddings_matrix = torch.load(embeddings_tensor_file, map_location=map_location)  # pyright: ignore[reportUnknownMemberType]
+        else:
+            self.embeddings_matrix = None
+        if self.embeddings_matrix is not None and self.current_model is not None:
+            sum = 0
+            model_name = self.current_model['model_name']
+            for entry in self.lib:
+                if model_name in entry['emb_ptrs']:
+                    sum += entry['emb_ptrs'][model_name][1]
+            self.log.info(f"Matrix: {self.embeddings_matrix.shape}, chunks: {sum}, texts: {len(self.lib)}")
+            if sum != self.embeddings_matrix.shape[0]:
+                self.log.warning(f"Embeddings-matrix incompatible with text library! Sum: {sum}, EmbMat: {self.embeddings_matrix.shape}")
+            return True
+        else:
+            self.log.warning("No embeddings available!")
+            return False
 
     def write_library(self):
         lib_path = os.path.join(self.root_path, "icotq_library.json")
         with open(lib_path, 'w') as f:
-            json.dump(self.lib, f, cls=self.NumpyEncoder)
+            json.dump(self.lib, f)
         self.save_pdf_cache_state()
 
     def get_pdf_text(self, desc:str, full_path:str) -> tuple[str | None, bool]:
@@ -252,7 +290,7 @@ class IcoTqStore:
             changed = True
         return text, changed
 
-    def import_texts(self):
+    def import_texts(self, max_imports: int|None = 10):
         if len(self.config['tq_sources']) == 0:
             self.log.error(f"No valid sources defined in config, can't import")
             return
@@ -306,13 +344,17 @@ class IcoTqStore:
                                 'desc_filename': desc_path,
                                 'filename': full_path,
                                 'text': text,
-                                'embs': {}
+                                'emb_ptrs': {}
                             })
                             self.lib.append(entry)
                             lib_changed = True
+                            if max_imports is not None and len(self.lib) >= max_imports:
+                                self.write_library()
+                                self.log.warning(f"Import reached max {max_imports}, library: {len(self.lib)} entries")
+                                return
         if lib_changed is True:
             self.write_library()
-            self.log.info("Changed library saved.")
+            self.log.info(f"Changed library saved: {len(self.lib)} entries")
 
     @staticmethod
     def get_chunk_ptr(index: int, chunk_size: int, chunk_overlap: int) -> int:
@@ -350,12 +392,16 @@ class IcoTqStore:
                     if device=='auto':
                         if torch.cuda.is_available():
                             self.engine = self.engine.to(torch.device('cuda'))
+                            self.device = 'cuda'
                         elif torch.backends.mps.is_available():
                             self.engine = self.engine.to(torch.device('mps'))
+                            self.device = 'mps'
                         else:
                             self.engine = self.engine.to(torch.device('cpu'))
+                            self.device = 'cpu'
                     else:
                         self.engine = self.engine.to(torch.device(device))
+                        self.device = device
                     self.current_model = model
                     self.log.info(f"Model {name} loaded.")
                     self.config['embeddings_model_name'] = name
@@ -374,16 +420,28 @@ class IcoTqStore:
         start_time: float = time.time()
         for ind, entry in enumerate(self.lib):
             self.log.info(f"Embedding: {ind+1}/{len(self.lib)}")
-            if self.current_model['model_name'] in entry['embs']:
+            if self.current_model['model_name'] in entry['emb_ptrs']:
                 continue
             text_chunks = self.get_chunks(entry['text'], self.current_model['chunk_size'], self.current_model['chunk_overlap'])
             if len(text_chunks) == 0:
                 self.log.error(f"Cannot encode empty text list at {entry['desc_filename']}")
                 continue
             self.log.info(f"Encoding {len(text_chunks)} chunks...")
-            embeddings: np.typing.ArrayLike = cast(np.typing.ArrayLike, self.engine.encode(sentences=text_chunks, show_progress_bar=True, convert_to_numpy=True))  # pyright: ignore[reportUnknownMemberType]
-            self.lib[ind]['embs'][self.current_model['model_name']] = embeddings
+            embeddings: list[torch.Tensor] = self.engine.encode(sentences=text_chunks, show_progress_bar=True, convert_to_numpy=False)  # pyright: ignore[reportUnknownMemberType, reportAssignmentType]
+            emb_matrix = torch.stack(embeddings)
+
+            if self.embeddings_matrix is None:
+                start_ptr = 0
+                self.embeddings_matrix = emb_matrix
+            else:
+                start_ptr = self.embeddings_matrix.shape[0]
+                self.embeddings_matrix = torch.cat([self.embeddings_matrix, emb_matrix])
+            emb_len = len(embeddings)
+            del emb_matrix
+            self.lib[ind]['emb_ptrs'][self.current_model['model_name']] = (start_ptr, emb_len)
             if save_every_sec > 0 and time.time() - start_time > save_every_sec:
                 self.write_library()
+                _ = self.save_tensor()
                 start_time = time.time()
         self.write_library()
+        _ = self.save_tensor()
