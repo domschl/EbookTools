@@ -843,8 +843,8 @@ class Repl():
 
 
 if __name__ == "__main__":
-    # repl = Repl(engine="TEXT")
-    repl = Repl(engine="SDL2")
+    repl = Repl(engine="TEXT")
+    # repl = Repl(engine="SDL2")
     if repl.repl.canvas_init(10,60) is False:
         repl.log.error("Init failed.")
         exit(1)
