@@ -143,7 +143,7 @@ class CalibreTools:
         s = unicodedata.normalize("NFC", s)
         return s
 
-    def load_calibre_library_metadata(self, progress:bool=False, use_sha256:bool=False, load_text:bool=True):
+    def load_calibre_library_metadata(self, progress:bool=False, hash_algo:str="crc32", load_text:bool=True):
         self.lib_entries = []
 
         total_entries = 0
@@ -379,12 +379,26 @@ class CalibreTools:
                             mod_time: float = os.path.getmtime(doc_full_name)
                             if mod_time > latest_mod_time:
                                 latest_mod_time = mod_time
-                            if use_sha256 is False:
+                            if hash_algo == "crc32":
                                 hash = str(CalibreTools._get_crc32(doc_full_name))
                                 hash_algo = "crc32"
-                            else:
+                            elif hash_algo == "sha256":
                                 hash = CalibreTools._get_sha256(doc_full_name)
                                 hash_algo = "sha256"
+                            elif hash_algo == "md5":
+                                # calculate MD5 hash for file in single read
+                                hash_md5 = hashlib.md5()
+                                with open(doc_full_name, "rb") as f:
+                                    content = f.read()
+                                    hash_md5.update(content)
+                                hash = hash_md5.hexdigest()
+                                hash_algo = "md5"
+                            else:
+                                self.log.error(
+                                    f"Unknown hash algorithm: {hash_algo}, using crc32"
+                                )
+                                hash = str(CalibreTools._get_crc32(doc_full_name))
+                                hash_algo = "crc32"
                             docs.append(
                                 {
                                     "path": doc_full_name,

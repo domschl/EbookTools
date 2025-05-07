@@ -102,10 +102,11 @@ if __name__ == "__main__":
         help="Format for timeline table output: none (markdown) or ascii (default)",
     )
     _ = parser.add_argument(
-        "-S",
-        '--SHA256',
-        action="store_true",
-        help="Use SHA256 for metadata comparison, default is CRC32",
+        "-s",
+        '--hash_algo',
+        type=str,
+        default='md5',
+        help="Hash algorithm to use for file hashing, default=md5, sha256, crc32, must be md5 for kosync!",
     )
     _ = parser.add_argument(
         "-V", "--vacuum", action="store_true", help="Show possible debris"
@@ -133,7 +134,7 @@ if __name__ == "__main__":
     do_timeline: bool = "timeline" in action
     do_bookdates: bool = "bookdates" in action
     do_date_stuff: bool = (do_bookdates is True or do_timeline is True)
-    use_sha256 = cast(bool, args.SHA256)
+    hash_algo = cast(str, args.hash_algo)
 
     emb = None
     if cast(bool, args.execute) is False:
@@ -212,7 +213,7 @@ if __name__ == "__main__":
         logger.info(
             f"Calibre Library {calibre.calibre_path}, loading and parsing XML metadata"
         )
-        lastest_mod_time = calibre.load_calibre_library_metadata(progress=interactive, use_sha256=use_sha256, load_text=do_date_stuff)
+        lastest_mod_time = calibre.load_calibre_library_metadata(progress=interactive, hash_algo=hash_algo, load_text=do_date_stuff)
         logger.info("Calibre Library loaded")
     else:
         calibre = None
