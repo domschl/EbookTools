@@ -105,8 +105,8 @@ if __name__ == "__main__":
         "-s",
         '--hash_algo',
         type=str,
-        default='md5',
-        help="Hash algorithm to use for file hashing, default=md5, sha256, crc32, must be md5 for kosync!",
+        default='crc32',
+        help="Hash algorithm to use for file hashing, default=crc32, options: crc32, md5, sha256",
     )
     _ = parser.add_argument(
         "-V", "--vacuum", action="store_true", help="Show possible debris"
