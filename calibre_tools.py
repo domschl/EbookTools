@@ -32,9 +32,9 @@ class DocsEntry(TypedDict):
     size: int
     hash: str
     hash_algo: str
+    kosync_md5: str
     mod_time: float
     ref_name: str
-
 
 class CalibreLibEntry(TypedDict):
     title: str
@@ -111,6 +111,33 @@ class CalibreTools:
             for chunk in iter(lambda: f.read(4096), b""):
                 crc32 = crc32 ^ zlib.crc32(chunk)
         return crc32
+
+    @staticmethod
+    def partial_koreader_md5(filepath: str) -> str | None:
+        # Taken from https://github.com/koreader/koreader/blob/master/frontend/util.lua
+        # Calculates a partial MD5 that is used by Koreader and kosync to identify files
+        if not filepath:
+            return None
+        try:
+            with open(filepath, "rb") as f:
+                step = 1024
+                size = 1024
+                md5_hash = hashlib.md5()
+                for i in range(-1, 11): # Lua loop is inclusive, Python range is exclusive for the end
+                    offset = step << (2 * i)
+                    _ = f.seek(offset, os.SEEK_SET)
+                    sample = f.read(size)
+                    if sample:
+                        md5_hash.update(sample)
+                    else:
+                        break
+                return md5_hash.hexdigest()
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            # Handle other potential I/O errors
+            print(f"Error processing file {filepath}: {e}")
+            return None    
 
     @staticmethod
     def _is_number(s: str) -> bool:
@@ -399,6 +426,12 @@ class CalibreTools:
                                 )
                                 hash = str(CalibreTools._get_crc32(doc_full_name))
                                 hash_algo = "crc32"
+                            koreader_md5 = CalibreTools.partial_koreader_md5(doc_full_name)
+                            if koreader_md5 is None:
+                                self.log.error(
+                                    f"Error calculating partial MD5 for {doc_full_name}"
+                                )
+                                koreader_md5 = ""
                             docs.append(
                                 {
                                     "path": doc_full_name,
@@ -406,6 +439,7 @@ class CalibreTools:
                                     "size": size,
                                     "hash": hash,
                                     "hash_algo": hash_algo,
+                                    "kosync_md5": koreader_md5,
                                     "mod_time": mod_time,
                                     "ref_name": "",
                                 }
