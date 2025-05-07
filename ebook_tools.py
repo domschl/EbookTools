@@ -20,7 +20,6 @@ class ConfigDict(TypedDict):
     calibre_path: str
     kindle_path: str
     meta_path: str
-    book_text_lib: str
     notes_path: str
     notes_books_subfolder: str
     export_formats: list[str]
@@ -109,6 +108,12 @@ if __name__ == "__main__":
         help="Hash algorithm to use for file hashing, default=crc32, options: crc32, md5, sha256",
     )
     _ = parser.add_argument(
+        "-w",
+        "--force-write",
+        action="store_true",
+        help="Force write of repo_state, default=False",
+    )
+    _ = parser.add_argument(
         "-V", "--vacuum", action="store_true", help="Show possible debris"
     )
     # Add max_notes, number of notes processed, default=0 which is all:
@@ -163,7 +168,6 @@ if __name__ == "__main__":
             "calibre_path": "~/ReferenceLibrary/Calibre Library",
             "kindle_path": "~/Workbench/KindleClippings",
             "meta_path": "~/MetaLibrary",
-            "book_text_lib": "~/VectorLib",
             "notes_path": "~/Notes",
             "notes_books_subfolder": "Books",
             "export_formats": ["epub", "pdf"],
@@ -173,29 +177,22 @@ if __name__ == "__main__":
         with open(config_file, "w") as f:
             _ = f.write(json.dumps(default_config, indent=4))
         logger.info(f"Config file {config_file} created, please edit it")
-        txt_data = os.path.expanduser(default_config['book_text_lib'])
-        os.makedirs(os.path.join(txt_data, "Texts"), exist_ok=True)
-        os.makedirs(os.path.join(txt_data, "PDF_Texts"), exist_ok=True)
         exit(1)
     else:
         try:
             with open(config_file, "r") as f:
-                config: ConfigDict = json.load(f)
+                config: ConfigDict = cast(ConfigDict, json.load(f))
             calibre_path: str = os.path.expanduser(config["calibre_path"])
-            kindle_path = os.path.expanduser(config["kindle_path"])
-            meta_path = os.path.expanduser(config["meta_path"])
-            book_text_lib_root = os.path.expanduser(config["book_text_lib"])
-            notes_path = os.path.expanduser(config["notes_path"])
-            notes_books_path = os.path.join(notes_path, config["notes_books_subfolder"])
-            export_formats = config["export_formats"]
+            kindle_path: str = os.path.expanduser(config["kindle_path"])
+            meta_path: str = os.path.expanduser(config["meta_path"])
+            notes_path: str = os.path.expanduser(config["notes_path"])
+            notes_books_path: str = os.path.join(notes_path, config["notes_books_subfolder"])
+            export_formats: list[str] = config["export_formats"]
         except Exception as e:
             logger.error(f"Error reading config file {config_file}: {e}")
             exit(1)
-    book_text_lib_embeddings: str = os.path.join(book_text_lib_root, "embeddings")
-    book_text_lib_texts: str = os.path.join(book_text_lib_root, "Texts")
-    book_text_lib_pdf_texts: str = os.path.join(book_text_lib_root, "PDF_Texts")
 
-    paths = [calibre_path, kindle_path, meta_path, notes_path, book_text_lib_root]
+    paths: list[str] = [calibre_path, kindle_path, meta_path, notes_path]
     for p in paths:
         if os.path.exists(p) is False:
             logger.error(
@@ -226,23 +223,11 @@ if __name__ == "__main__":
             dry_run=dry_run,
             delete=delete,
             vacuum= cast(bool, args.vacuum),
+            force_write = cast(bool, args.force_write),
         )
         logger.info(
             f"Calibre Library {calibre.calibre_path} export: {new_books} new books, {upd_books} updated books, {debris} debris"
-        )
-        if book_text_lib_texts != "" and os.path.exists(book_text_lib_texts):
-            logger.info(f"Calibre Library {calibre.calibre_path}, copying text books")
-            txt_books, upd_txt_books, txt_debris = calibre.export_calibre_books(
-                book_text_lib_texts,
-                format=["txt"],
-                dry_run=dry_run,
-                delete=delete,
-                vacuum=cast(bool, args.vacuum),
-            )
-            logger.info(
-                f"Calibre Library {calibre.calibre_path} export: {txt_books} new books, {upd_txt_books} updated books, {txt_debris} debris"
-            )
-            
+        )            
 
     if do_notes is True or do_indra is True or do_date_stuff is True:
         logger.info(f"Loading notes from {notes_path}")
@@ -342,5 +327,3 @@ if __name__ == "__main__":
                         # print(meta)
         logger.info(f"Processed metadata, ok={m_oks}, errors={m_errs}")
         
-    if do_bookdates is True:
-        logger.error(f"Can't access the book library texts at {book_text_lib_root}")

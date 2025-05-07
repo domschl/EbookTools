@@ -124,7 +124,11 @@ class CalibreTools:
                 size = 1024
                 md5_hash = hashlib.md5()
                 for i in range(-1, 11): # Lua loop is inclusive, Python range is exclusive for the end
-                    offset = step << (2 * i)
+                    exponent = 2 * i
+                    if exponent < 0:
+                        offset = 0  # Koreader frickel
+                    else:
+                        offset = step << exponent   # Perform left shift for non-negative exponent
                     _ = f.seek(offset, os.SEEK_SET)
                     sample = f.read(size)
                     if sample:
@@ -582,6 +586,7 @@ class CalibreTools:
         dry_run: bool = False,
         delete: bool = False,
         vacuum: bool = False,
+        force_write: bool = False
     ) -> tuple[int, int, int]:
         target = os.path.expanduser(target_path)
         self.old_lib_entries, self.sequence_number = self.load_state(target)
@@ -635,7 +640,7 @@ class CalibreTools:
                 # normalize filenames through unicodedata decomposition and composition to avoid iCloud+AFTP Unicode encoding issues
                 filename = unicodedata.normalize("NFC", filename)
                 target_existing.append(filename)
-        for entry in self.lib_entries:
+        for ent_idx, entry in enumerate(self.lib_entries):
             folder = os.path.join(target, entry["short_folder"])
             folder_create = False
             if not os.path.exists(folder) and dry_run is not True:
@@ -657,6 +662,10 @@ class CalibreTools:
                 doc_name = os.path.join(folder, ref_name)
                 # normalize filenames through unicodedata decomposition and composition to avoid iCloud+AFTP Unicode encoding issues
                 doc_name = unicodedata.normalize("NFC", doc_name)
+                ko_md5 = CalibreTools.partial_koreader_md5(doc["path"])
+                if ('kosync_md5' not in doc or doc["kosync_md5"] != ko_md5) and ko_md5 is not None:
+                    doc["kosync_md5"] = ko_md5
+                    updated = True
                 if not os.path.exists(doc_name):
                     # Copy file
                     updated = True
@@ -664,7 +673,7 @@ class CalibreTools:
                     if ext == "epub":
                         self.check_epub_calibre_bookmarks(doc["path"], entry, dry_run)
                     if dry_run is False:
-                        shutil.copy2(doc["path"], doc_name)
+                        _ = shutil.copy2(doc["path"], doc_name)
                         self.log.info(f"Copied {doc_name}")
                     else:
                         self.log.info(f"Would create {doc_name}")
@@ -774,7 +783,7 @@ class CalibreTools:
                 update_state = True
         else:
             self.log.info("No updates and no new files found, nothing to do.")
-        if update_state is True or self.sequence_number == 0:
+        if update_state is True or self.sequence_number == 0 or force_write is True:
             self.sequence_number = self.save_state(
                 target, self.lib_entries, self.sequence_number
             )
