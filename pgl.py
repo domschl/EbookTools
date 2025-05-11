@@ -6,12 +6,12 @@ import re
 import threading
 import queue
 from dataclasses import dataclass
-from abc import abstractmethod
-from typing import Protocol, override, cast
+from abc import abstractmethod, ABC
+from typing import override, cast
 
-import sdl2
-import sdl2.ext
-import sdl2.sdlttf
+import sdl2  # pyright: ignore[reportMissingTypeStubs]
+import sdl2.ext  # pyright: ignore[reportMissingTypeStubs]
+import sdl2.sdlttf  # pyright: ignore[reportMissingTypeStubs]
 import ctypes
 
 @dataclass()
@@ -37,7 +37,7 @@ class Pad:
     schema: dict[str, list[int]]
 
 
-class ReplIO(Protocol):
+class ReplIO(ABC):
     @abstractmethod
     def __init__(self, que:queue.Queue[InputEvent]):
         pass
@@ -333,20 +333,20 @@ class Sdl2ReplIO(ReplIO):
         self.fg_color: list[int] = [0xff, 0xff, 0xff, 0xff]
         self.bg_color: list[int] = [0, 0, 0, 0xff]
 
-        sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportAny]
-        sdl2.sdlttf.TTF_Init()  # pyright: ignore[reportUnknownMemberType]
+        sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO)  # pyright: ignore[reportUnknownMemberType]
+        sdl2.sdlttf.TTF_Init()
         self.event_loop_active: bool = True
         WINDOW_WIDTH, WINDOW_HEIGHT = 800, 600
         window = sdl2.ext.Window("SDL2 Text Example", size=(WINDOW_WIDTH, WINDOW_HEIGHT),
-                                 flags = (sdl2.SDL_WINDOW_ALLOW_HIGHDPI |  sdl2.SDL_RENDERER_ACCELERATED)) # pyright: ignore[reportAny] # sdl2.SDL_WINDOW_RESIZABLE)) #  | sdl2.SDL_WINDOW_METAL |
-        window.show()  # pyright: ignore[reportUnknownMemberType]
+                                 flags = (sdl2.SDL_WINDOW_ALLOW_HIGHDPI |  sdl2.SDL_RENDERER_ACCELERATED))
+        window.show()
         self.renderer:sdl2.ext.Renderer = sdl2.ext.Renderer(window)
 
         rw: ctypes.c_int = ctypes.c_int(0)
         rh: ctypes.c_int = ctypes.c_int(0)
         #prw = ctypes.POINTER(ctypes.c_int(rw))
         #prh: ctypes.POINTER(ctypes.c_int)
-        sdl2.SDL_GetRendererOutputSize(self.renderer.sdlrenderer, rw, rh);  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+        sdl2.SDL_GetRendererOutputSize(self.renderer.sdlrenderer, rw, rh);  # pyright: ignore[reportUnknownMemberType]
         if rw.value != WINDOW_WIDTH:
             widthScale = rw.value / WINDOW_WIDTH
             heightScale = rh.value / WINDOW_HEIGHT
@@ -358,8 +358,8 @@ class Sdl2ReplIO(ReplIO):
 
             # sdl2.SDL_RenderSetScale(self.renderer.sdlrenderer, widthScale, heightScale);
             
-        # font_path = "./Resources/IosevkaNerdFontMono-Regular.ttf"
-        font_path = "./Resources/BabelStoneTibetan.ttf"
+        font_path = "./Resources/IosevkaNerdFontMono-Regular.ttf"
+        # font_path = "./Resources/BabelStoneTibetan.ttf"
         if os.path.exists(font_path) is False:
             self.log.error(f"Font {font_path} does not exist")
         # sdl2.ext.RenderSetScale(self.renderer,2,2)
@@ -367,11 +367,11 @@ class Sdl2ReplIO(ReplIO):
         self.dpi:int = 144
         font_size = 8 * self.font_mag
         self.font: sdl2.sdlttf.TTF_Font = sdl2.sdlttf.TTF_OpenFontDPI(font_path.encode('utf-8'), font_size, self.dpi, self.dpi)  # pyright: ignore[reportUnknownMemberType] # , reportUnannotatedClassAttribute]
-        sdl2.sdlttf.TTF_SetFontHinting(self.font, sdl2.sdlttf.TTF_HINTING_LIGHT_SUBPIXEL)  # pyright: ignore[reportAny, reportUnknownMemberType]
+        sdl2.sdlttf.TTF_SetFontHinting(self.font, sdl2.sdlttf.TTF_HINTING_LIGHT_SUBPIXEL)  # pyright: ignore[reportUnknownMemberType]
         rect = self.render_text("a", 0, 0)
         if rect is not None:
-            self.char_width: int = rect.w  # pyright: ignore[reportAny]
-            self.char_height: int = rect.h  # pyright: ignore[reportAny]
+            self.char_width: int = rect.w
+            self.char_height: int = rect.h
             print(f"Char-sizes: {self.char_width}, {self.char_height}")
         else:
             self.log.error("Cannot determine character dimensions!")
@@ -382,8 +382,8 @@ class Sdl2ReplIO(ReplIO):
     @override
     def exit(self):
         sdl2.sdlttf.TTF_CloseFont(self.font)  # pyright: ignore[reportUnknownMemberType]
-        sdl2.sdlttf.TTF_Quit()  # pyright: ignore[reportUnknownMemberType]
-        sdl2.SDL_Quit()  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+        sdl2.sdlttf.TTF_Quit()
+        sdl2.SDL_Quit()  # pyright: ignore[reportUnknownMemberType]
 
     @override
     def color_set(self, fg:list[int], bg:list[int] | None):
@@ -404,11 +404,11 @@ class Sdl2ReplIO(ReplIO):
         
         # Surface = sdl2.sdlttf.TTF_RenderUTF8_Solid(self.font, text.encode(), color)
         surface = sdl2.sdlttf.TTF_RenderUTF8_LCD(self.font, text.encode(), color_fg, color_bg)  # pyright:ignore[reportUnknownMemberType, reportUnknownVariableType]
-        texture = sdl2.SDL_CreateTextureFromSurface(self.renderer.sdlrenderer, surface)  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType, reportAttributeAccessIssue]
-        rect = sdl2.SDL_Rect(x, y, surface.contents.w // self.font_mag, surface.contents.h // self.font_mag)  # pyright: ignore[reportUnknownMemberType]
-        sdl2.SDL_FreeSurface(surface)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
-        sdl2.SDL_RenderCopy(self.renderer.sdlrenderer, texture, None, rect)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
-        sdl2.SDL_DestroyTexture(texture)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
+        texture = sdl2.SDL_CreateTextureFromSurface(self.renderer.sdlrenderer, surface)  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+        rect = sdl2.SDL_Rect(x, y, surface.contents.w // self.font_mag, surface.contents.h // self.font_mag)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        sdl2.SDL_FreeSurface(surface)  # pyright: ignore[reportUnknownMemberType]
+        sdl2.SDL_RenderCopy(self.renderer.sdlrenderer, texture, None, rect)  # pyright: ignore[reportUnknownMemberType]
+        sdl2.SDL_DestroyTexture(texture)  # pyright: ignore[reportUnknownMemberType]
         return rect
 
     @override
@@ -419,7 +419,7 @@ class Sdl2ReplIO(ReplIO):
         
     @override
     def event_loop_tick(self):
-        events: list[sdl2.SDL_Event] = cast(list[sdl2.SDL_Event], sdl2.ext.get_events())  # pyright: ignore[reportUnknownMemberType]
+        events: list[sdl2.SDL_Event] = cast(list[sdl2.SDL_Event], sdl2.ext.get_events())
         for event in events:
             if event.type == sdl2.SDL_QUIT:  # pyright: ignore[reportAny]
                 msg = InputEvent("exit", "")
@@ -472,9 +472,9 @@ class Sdl2ReplIO(ReplIO):
     @override
     def canvas_render_show(self):
         if self.cur_active is True:
-            sdl2.SDL_SetRenderDrawColor(self.renderer.sdlrenderer,self.fg_color[0],self.fg_color[1],self.fg_color[2],self.fg_color[3])  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
-            sdl2.SDL_RenderDrawLine(self.renderer.sdlrenderer, self.cur_pos_x * self.char_width, self.cur_pos_y * self.char_height, self.cur_pos_x * self.char_width, (self.cur_pos_y + 1) * self.char_height)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
-        self.renderer.present()  # pyright: ignore[reportUnknownMemberType]
+            sdl2.SDL_SetRenderDrawColor(self.renderer.sdlrenderer,self.fg_color[0],self.fg_color[1],self.fg_color[2],self.fg_color[3])  # pyright: ignore[reportUnknownMemberType]
+            sdl2.SDL_RenderDrawLine(self.renderer.sdlrenderer, self.cur_pos_x * self.char_width, self.cur_pos_y * self.char_height, self.cur_pos_x * self.char_width, (self.cur_pos_y + 1) * self.char_height)  # pyright: ignore[reportUnknownMemberType]
+        self.renderer.present()
         return
 
     @override
@@ -843,8 +843,8 @@ class Repl():
 
 
 if __name__ == "__main__":
-    repl = Repl(engine="TEXT")
-    # repl = Repl(engine="SDL2")
+    # repl = Repl(engine="TEXT")
+    repl = Repl(engine="SDL2")
     if repl.repl.canvas_init(10,60) is False:
         repl.log.error("Init failed.")
         exit(1)
