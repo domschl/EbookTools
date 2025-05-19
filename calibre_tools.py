@@ -696,6 +696,21 @@ class CalibreTools:
                                 f"SHA256 changed for {doc['name']} from {doc['hash']} to {sha256}"
                             )
                             doc_changed = True
+                    if doc_changed is False:
+                        if 'kosync_md5' not in doc:
+                            doc_changed = True
+                            self.log.warning(f"kosync_md5 not found in doc {doc['name']}, updating")
+                            koreader_md5 = CalibreTools.partial_koreader_md5(doc_name)
+                            doc["kosync_md5"] = koreader_md5
+                        else:
+                            koreader_md5 = CalibreTools.partial_koreader_md5(doc_name)
+                            if koreader_md5 is not None and koreader_md5 != doc["kosync_md5"]:
+                                doc_changed = True
+                                doc["kosync_md5"] = koreader_md5
+                                self.log.warning(
+                                    f"kosync_md5 changed for {doc['name']} from {doc['kosync_md5']} to {koreader_md5}"
+                                )
+
                     if doc_changed:
                         updated = True
                         upd_docs += 1
