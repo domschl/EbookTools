@@ -429,7 +429,7 @@ class TimeLines:
                 f"Table {table['columns']}: Domain {table['metadata']['domain']} already exists, skipping"
             )
             return event_cnt, 0
-        cur_dom: str = table["metadata"]["domain"]
+        cur_dom: str = cast(str, table["metadata"]["domain"])
         tables_unique_domain_names.append(cur_dom)
         last_start_time = None
         last_end_time = None
@@ -533,8 +533,8 @@ class TimeLines:
         skipped_cnt = 0
         tables_unique_domain_names: list[str] = []
         for note_name in notes.notes:
-            note: dict[str, Any] = notes.notes[note_name]  # pyright: ignore[reportExplicitAny]
-            tables: list[MDTable] = note["tables"]
+            note: dict[str, Any] = notes.notes[note_name]  # pyright: ignore[reportAny, reportExplicitAny]
+            tables: list[MDTable] = note["tables"]  # pyright: ignore[reportAny]
             for table in tables:
                 new_evs, new_skipped = self.add_date_table_events(
                     table, tables_unique_domain_names, check_order=True

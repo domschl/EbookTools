@@ -240,8 +240,8 @@ if __name__ == "__main__":
         table_cnt = 0
         metadata_cnt = 0
         for note_name in notes.notes:
-            note: dict[str, Any] = notes.notes[note_name]  # pyright: ignore[reportExplicitAny]
-            tables: list[MDTable] = note["tables"]
+            note: dict[str, Any] = notes.notes[note_name]  # pyright: ignore[reportAny, reportExplicitAny]
+            tables: list[MDTable] = note["tables"]  # pyright: ignore[reportAny]
             for table in tables:
                 if "metadata" in table and len(table["metadata"].keys()) > 0:
                     metadata_cnt += 1

@@ -548,7 +548,7 @@ class CalibreTools:
                     reader.close()
                     return
                 try:
-                    bookmarks: list[Any] | None = json.loads(bookmarks_jsonstr)  # pyright: ignore[reportExplicitAny]
+                    bookmarks: list[Any] | None = json.loads(bookmarks_jsonstr)  # pyright: ignore[reportAny, reportExplicitAny]
                 except Exception as e:
                     self.log.error(
                         f"Error parsing json calibre-bookmarks for {entry['title']}, {bookmarks_jsonstr}: {e}"
@@ -640,7 +640,7 @@ class CalibreTools:
                 # normalize filenames through unicodedata decomposition and composition to avoid iCloud+AFTP Unicode encoding issues
                 filename = unicodedata.normalize("NFC", filename)
                 target_existing.append(filename)
-        for ent_idx, entry in enumerate(self.lib_entries):
+        for _ent_idx, entry in enumerate(self.lib_entries):
             folder = os.path.join(target, entry["short_folder"])
             folder_create = False
             if not os.path.exists(folder) and dry_run is not True:
@@ -720,7 +720,7 @@ class CalibreTools:
                                 doc["path"], entry, dry_run
                             )
                         if dry_run is False:
-                            shutil.copy2(doc["path"], doc_name)
+                            _ = shutil.copy2(doc["path"], doc_name)
                             self.log.warning(f"Updated **CHANGED** {doc_name}")
                         else:
                             self.log.warning(f"Would update **CHANGED** {doc_name}")
@@ -826,7 +826,7 @@ class CalibreTools:
             self.log.error(f"State file not found at {repo_state_filename}")
             return [], 0
         with open(repo_state_filename, "r") as f:
-            repo_state: RepoState = json.load(f)
+            repo_state: RepoState = json.load(f)  # pyright: ignore[reportAny]
             lib_entries: list[CalibreLibEntry] = repo_state["lib_entries"]
             sequence_number: int = repo_state["sequence_number"]
             self.log.info(
@@ -841,7 +841,7 @@ class CalibreTools:
             return False
         try:
             with open(repo_state_filename, "r") as f:
-                repo_state: RepoState = json.load(f)
+                repo_state: RepoState = json.load(f)  # pyright: ignore[reportAny]
                 sequence_number: int = repo_state["sequence_number"]
                 if sequence_number != self.sequence_number:
                     self.log.warning(
@@ -909,7 +909,7 @@ class CalibreTools:
                     "metadata" in notes.notes[note_filename]
                     and "uuid" in notes.notes[note_filename]["metadata"]
                 ):
-                    uuid: str = notes.notes[note_filename]["metadata"]["uuid"]
+                    uuid: str = cast(str, notes.notes[note_filename]["metadata"]["uuid"])
                 if uuid != "":
                     existing_notes_filenames[note_filename] = uuid
                     existing_notes_uuids[uuid] = note_filename
