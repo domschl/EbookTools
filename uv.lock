@@ -424,14 +424,14 @@ wheels = [
 
 [[package]]
 name = "indralib"
-version = "0.4.2"
+version = "0.4.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/de/b1/2053c75040699690bdd2cfc0389c3fe9dbe3da11769fe1c462af15f13ec6/indralib-0.4.2.tar.gz", hash = "sha256:e41eaea05667a25496c498389ce6251263ee5b12c8a52abfcf8664d9c0e551bc", size = 17603, upload-time = "2025-03-04T08:27:34.582Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/70/21f694d8f84365e4d1f3cb3b25cab6e0aabbc0910c748ae65a4caf8fa11b/indralib-0.4.3.tar.gz", hash = "sha256:6356c6a88995caf27befdb1aa1037bc4b369dd77a849d97ecb29a59408dddc25", size = 17557, upload-time = "2025-05-28T06:12:13.364Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d8/48/f72ec37de0d54f4828313781455f20b55a7242366582b7f9d8089afdb2f1/indralib-0.4.2-py3-none-any.whl", hash = "sha256:c7df78bc203db4384525e125679b46778740a81f853b80a53acf4597b30d1684", size = 18904, upload-time = "2025-03-04T08:27:32.846Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/ca/17c2ce8b8f9287d274ec64c00901d4c214bf7607be1ebf81838c45899b50/indralib-0.4.3-py3-none-any.whl", hash = "sha256:09bb86f61732cb274711ce4be48becc9fa8630717835f2532950b3db5ca1f1f7", size = 18920, upload-time = "2025-05-28T06:12:11.519Z" },
 ]
 
 [[package]]
