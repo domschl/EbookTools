@@ -12,6 +12,7 @@ dependencies = [
     "lxml",
     "lxml-stubs",
     "numpy",
+    "pandas>=2.2.3",
     "pillow",
     "pycryptodome",
     "pymupdf",
