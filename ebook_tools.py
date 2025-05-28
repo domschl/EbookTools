@@ -257,7 +257,7 @@ if __name__ == "__main__":
             indra = IndraTools()
 
     if do_date_stuff is True:
-        if calibre is not None and timelines is not None:
+        if calibre is not None and timelines is not None and do_bookdates is True:
             _ = timelines.add_book_events(calibre.lib_entries)
         if notes is not None and timelines is not None:
             timelines.add_notes_events(notes)
