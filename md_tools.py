@@ -456,7 +456,9 @@ class MdTools:
                     dirs.remove(skip_dir)
             for file in files:
                 num += 1
-                if file.endswith(".md") and not file.startswith(".#"):
+                if file.endswith(".md"):
+                    if file.startswith(".#"):  # Emacs temp
+                        continue
                     if progress is True:
                         notes_progress += 1
                         progress_str = progress_bar_string(
