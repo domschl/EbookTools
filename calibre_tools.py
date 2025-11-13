@@ -648,7 +648,8 @@ class CalibreTools:
             short_title = entry["short_title"]
             num_docs = len(entry["docs"])
             if num_docs == 0:
-                self.log.error(f"No documents found for {short_title}")
+                if entry['series'] != 'Hardcopy':
+                    self.log.error(f"No documents found for {short_title}")
 
             for index, doc in enumerate(entry["docs"]):
                 ext = doc["name"].split(".")[-1]
