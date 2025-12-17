@@ -170,7 +170,7 @@ def date_merge(year:str, rest:str) -> str:
     day = None
     month = None
     year = pre_clean(year)
-    rest = rest.strip()
+    rest = remove_footnotes(rest.strip())
     year = year.strip()
     if len(rest) > 0:
         rparts = rest.split(" ")
