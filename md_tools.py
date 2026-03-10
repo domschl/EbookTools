@@ -199,6 +199,8 @@ class MdTools:
                 if "tags" in note["metadata"]:
                     tags: list[str] = cast(list[str], note["metadata"]["tags"])
                     for tag in tags:
+                        if isinstance(tag, str) is False:
+                            tag = str(tag)
                         if tag.startswith("Series/"):
                             relative_folder: str = "Books/" + tag[7:]
                             break
